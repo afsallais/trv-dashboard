@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TRV-ZBT · Valve Console</title>
+<style>
+:root{--bg:#efe9df;--panel:#f8f4ec;--ink:#2a2420;--mute:#8a7f72;--line:#d9d0c1;--heat:#e8590c;--cool:#2f7f9e;--ok:#3d8b5a;--shadow:0 1px 0 #fff8 inset,0 8px 24px #6b4e2a18;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110e;--panel:#1f1914;--ink:#f1e8da;--mute:#8f8272;--line:#33291f;--heat:#ff7a2f;--cool:#5fb4d4;--ok:#6cc58b;--shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0008;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15110e;--panel:#1f1914;--ink:#f1e8da;--mute:#8f8272;--line:#33291f;--heat:#ff7a2f;--cool:#5fb4d4;--ok:#6cc58b;--shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0008;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+main{max-width:460px;margin:0 auto;padding:18px 16px 40px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin:0;color:var(--mute);font-weight:600}
+h1 b{color:var(--ink)}
+.pill{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mute)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px #3d8b5a30}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between}
+/* dial */
+.dialwrap{position:relative;width:min(100%,320px);margin:0 auto;touch-action:none;user-select:none}
+svg{display:block;width:100%;height:auto}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.big{font-size:64px;font-weight:300;letter-spacing:-.04em;line-height:1}
+.big sup{font-size:22px;vertical-align:top;position:relative;top:8px;color:var(--mute)}
+.sub{font-size:12px;color:var(--mute);margin-top:6px}
+.state{margin-top:10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:4px 10px;border-radius:99px;border:1px solid var(--line)}
+.state.on{color:var(--heat);border-color:var(--heat)}
+.step{display:flex;justify-content:center;gap:12px;margin-top:6px}
+.step button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:22px;cursor:pointer}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg);border-radius:14px;padding:4px;border:1px solid var(--line)}
+.seg button{border:0;background:none;padding:11px 0;border-radius:10px;color:var(--mute);font:inherit;font-weight:600;cursor:pointer}
+.seg button.a{background:var(--ink);color:var(--bg)}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.stat{background:var(--bg);border-radius:14px;padding:12px;border:1px solid var(--line)}
+.stat small{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.stat b{font-size:22px;font-weight:500}
+.bar{height:6px;background:var(--line);border-radius:9px;margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--heat);transition:width .6s}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0;padding-top:0}
+.row p{margin:0}.row .t{font-weight:600}.row .d{font-size:12.5px;color:var(--mute);margin-top:2px}
+.sw{flex:none;width:50px;height:30px;border-radius:99px;background:var(--line);position:relative;cursor:pointer;border:0;transition:.2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--panel);box-shadow:0 1px 3px #0005;transition:.2s}
+.sw.on{background:var(--heat)}.sw.on::after{left:23px}
+input[type=range]{width:100%;accent-color:var(--heat);margin:8px 0 0}
+.val{font-size:13px;color:var(--ink)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--mute);border-radius:12px;padding:10px;font:inherit;font-weight:600;cursor:pointer}
+.chip.a{border-color:var(--heat);color:var(--heat)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td{padding:7px 0;border-top:1px dashed var(--line)}td:last-child{text-align:right}td:first-child{color:var(--mute)}
+.fault{color:var(--ok)}
+.foot{font-size:11.5px;color:var(--mute);text-align:center;margin-top:8px}
+.scr{display:flex;gap:8px;margin-top:8px}
+.scr .chip{flex:1;padding:8px 0}
+</style></head>
+<body><main>
+<header><h1><b>TRV‑ZBT</b> · Valve console</h1><div class="pill"><span class="dot"></span><span id="batt" class="mono">LQI 182</span></div></header>
+
+<section class="card">
+  <p class="lbl"><span>Target</span><span class="mono" id="mini"></span></p>
+  <div class="dialwrap" id="dial">
+    <svg viewBox="0 0 300 300" id="svg"></svg>
+    <div class="center"><div class="big mono"><span id="tgt">21.0</span><sup>°C</sup></div>
+      <div class="sub">room <span id="cur" class="mono">19.4</span>°C</div>
+      <div class="state" id="run">idle</div></div>
+  </div>
+  <div class="step"><button id="m">−</button><button id="p">+</button></div>
+  <div style="height:14px"></div>
+  <div class="seg" id="mode"><button data-m="off">Off</button><button data-m="auto">Auto</button><button data-m="heat">Heat</button></div>
+</section>
+
+<section class="card">
+  <p class="lbl"><span>Live</span><span>read‑only</span></p>
+  <div class="grid">
+    <div class="stat"><small>Valve</small><b class="mono" id="vp">0</b>%<div class="bar"><i id="vb"></i></div></div>
+    <div class="stat"><small>Battery</small><b class="mono" id="bat">87</b>%<div class="bar"><i style="width:87%;background:var(--ok)" id="bb"></i></div></div>
+    <div class="stat"><small>Fault</small><b class="fault mono" id="fc">0</b><div class="sub" style="margin:4px 0 0">none</div></div>
+  </div>
+</section>
+
+<section class="card">
+  <p class="lbl"><span>Outside tracking</span><span class="mono" id="trk">off</span></p>
+  <div class="row" style="padding-top:0"><div><p class="t">Follow outside temperature</p><p class="d">Target = outside + offset, updated automatically</p></div><button class="sw" id="tsw"></button></div>
+  <p class="t" style="margin:0;display:flex;justify-content:space-between">Offset above outside <span class="mono val" id="ofv">+10.0 °C</span></p>
+  <input type="range" id="of" min="0" max="20" step="0.5" value="10">
+  <div style="height:10px"></div>
+  <p class="t" style="margin:0;display:flex;justify-content:space-between">Outside now <span class="mono val" id="otv">2.0 °C</span></p>
+  <p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Simulated here · feed from a weather sensor when live</p>
+  <input type="range" id="ot" min="-20" max="35" step="0.5" value="2">
+  <p class="d" id="tnote" style="margin:10px 0 0;font-size:12.5px;color:var(--mute)"></p>
+</section>
+
+<section class="card">
+  <p class="lbl">Safeguards</p>
+  <div class="row"><div><p class="t">Child lock</p><p class="d">Disables the knob and buttons on the valve</p></div><button class="sw" data-k="child"></button></div>
+  <div class="row"><div><p class="t">Open‑window detection</p><p class="d">Shuts the valve if temperature drops over 1.5 °C in 5 min</p></div><button class="sw on" data-k="ow"></button></div>
+  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Frost protection <span class="mono val" id="frv">7.0 °C</span></p><p class="d">Valve opens below this, even when off</p><input type="range" id="fr" min="4" max="35" step="0.5" value="7"></div>
+</section>
+
+<section class="card">
+  <p class="lbl">Sensing</p>
+  <div class="two" id="sens"><button class="chip a" data-s="internal">Internal</button><button class="chip" data-s="external">External</button></div>
+  <div id="extbox" style="display:none;margin-top:12px"><p class="t" style="margin:0;display:flex;justify-content:space-between">External input <span class="mono val" id="exv">20.5 °C</span></p><p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Feed from a room sensor (0–55 °C)</p><input type="range" id="ex" min="0" max="55" step="0.1" value="20.5"></div>
+  <div style="height:14px"></div>
+  <p class="t" style="margin:0;display:flex;justify-content:space-between">Calibration offset <span class="mono val" id="cav">0.0 °C</span></p>
+  <input type="range" id="ca" min="-12" max="12" step="0.2" value="0">
+  <div style="height:10px"></div>
+  <p class="t" style="margin:0;display:flex;justify-content:space-between">Temperature accuracy <span class="mono val" id="acv">−0.2 °C</span></p>
+  <p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Smaller = tighter, more motor movement</p>
+  <input type="range" id="ac" min="-1" max="-0.2" step="0.2" value="-0.2">
+  <div class="row" style="margin-top:12px"><div><p class="t">Smart temperature control</p><p class="d">Adaptive valve opening (PID) · firmware 1.4.4+</p></div><button class="sw on" data-k="smart"></button></div>
+</section>
+
+<section class="card">
+  <p class="lbl">Display</p>
+  <p class="d" style="margin:0;font-size:12.5px;color:var(--mute)">Screen orientation</p>
+  <div class="scr" id="scr"><button class="chip a" data-d="0">0°</button><button class="chip" data-d="90">90°</button><button class="chip" data-d="180">180°</button><button class="chip" data-d="270">270°</button></div>
+</section>
+
+<section class="card">
+  <p class="lbl"><span>Motor telemetry</span><span>read‑only</span></p>
+  <table class="mono">
+    <tr><td>Heating valve position</td><td>100 %</td></tr>
+    <tr><td>Idle valve position</td><td>0 %</td></tr>
+    <tr><td>Idle steps</td><td>3,482</td></tr>
+    <tr><td>Closing steps</td><td>3,455</td></tr>
+    <tr><td>Opening limit voltage</td><td>2,046 mV</td></tr>
+    <tr><td>Closing limit voltage</td><td>1,189 mV</td></tr>
+    <tr><td>Motor running voltage</td><td>1,874 mV</td></tr>
+  </table>
+</section>
+<p class="foot">Simulated preview · wire to Zigbee2MQTT or ZHA to go live</p>
+</main>
+<script>
+const S={t:21,c:19.4,mode:'auto',child:false,ow:true,smart:true,v:0};
+const MIN=4,MAX=35,A0=135,SW=270,$=id=>document.getElementById(id);
+const svg=$('svg'),NS='http://www.w3.org/2000/svg';
+const pt=(a,r)=>{const x=(a-90)*Math.PI/180;return[150+r*Math.cos(x),150+r*Math.sin(x)]};
+const ang=t=>A0+(t-MIN)/(MAX-MIN)*SW;
+let h='<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1"/>';
+for(let t=MIN;t<=MAX;t+=0.5){const a=ang(t),big=t%5===0,mid=Number.isInteger(t);const[x1,y1]=pt(a,big?118:mid?122:125),[x2,y2]=pt(a,132);h+=`<line class="tk" data-t="${t}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${big?2.4:1.3}" stroke-linecap="round"/>`}
+for(let t=5;t<=35;t+=5){const[x,y]=pt(ang(t),104);h+=`<text x="${x}" y="${y+3}" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${t}</text>`}
+h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3"/>';
+svg.innerHTML=h;
+function paint(){
+ const a=ang(S.t);
+ document.querySelectorAll('.tk').forEach(l=>{const t=+l.dataset.t;l.setAttribute('stroke',t<=S.t?(S.mode==='off'?'var(--mute)':'var(--heat)'):'var(--line)')});
+ const[kx,ky]=pt(a,125);const k=$('knob');k.setAttribute('cx',kx);k.setAttribute('cy',ky);
+ const[rx,ry]=pt(ang(Math.min(MAX,Math.max(MIN,S.c))),141);
+ $('room').setAttribute('d',`M${rx} ${ry-4}l4 8h-8z`);
+ $('room').setAttribute('transform',`rotate(${ang(Math.min(MAX,Math.max(MIN,S.c)))-90+180} ${rx} ${ry})`);
+ $('tgt').textContent=S.t.toFixed(1);$('cur').textContent=S.c.toFixed(1);
+ const heating=S.v>0;$('run').textContent=heating?'heating':'idle';$('run').className='state'+(heating?' on':'');
+ $('vp').textContent=Math.round(S.v);$('vb').style.width=S.v+'%';
+ document.querySelectorAll('#mode button').forEach(b=>b.classList.toggle('a',b.dataset.m===S.mode));
+ $('mini').textContent=S.mode.toUpperCase()+(S.child?' · LOCKED':'');
+}
+function setT(t,auto){if(S.child&&!auto)return;if(!auto&&S.track){S.track=false;syncTrack()}S.t=Math.round(Math.min(MAX,Math.max(MIN,t))*2)/2;paint()}
+function fromEvt(e){const r=svg.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2;let a=Math.atan2(y,x)*180/Math.PI+90;if(a<0)a+=360;let d=a-A0;if(d<0)d+=360;if(d>SW)d=d-SW<(360-SW)/2?SW:0;setT(MIN+d/SW*(MAX-MIN))}
+let drag=false;const dw=$('dial');
+dw.addEventListener('pointerdown',e=>{drag=true;dw.setPointerCapture(e.pointerId);fromEvt(e)});
+dw.addEventListener('pointermove',e=>{if(drag)fromEvt(e)});
+dw.addEventListener('pointerup',()=>drag=false);
+$('m').onclick=()=>setT(S.t-0.5);$('p').onclick=()=>setT(S.t+0.5);
+document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{S.mode=b.dataset.m;paint()});
+document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint()}});
+const bind=(id,out,f)=>$(id).oninput=e=>{$(out).textContent=f(+e.target.value)};
+bind('fr','frv',v=>v.toFixed(1)+' °C');bind('ex','exv',v=>v.toFixed(1)+' °C');
+bind('ca','cav',v=>(v>0?'+':'')+v.toFixed(1)+' °C');bind('ac','acv',v=>v.toFixed(1).replace('-','−')+' °C');
+document.querySelectorAll('#sens .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#sens .chip').forEach(x=>x.classList.toggle('a',x===b));$('extbox').style.display=b.dataset.s==='external'?'block':'none'});
+document.querySelectorAll('#scr .chip').forEach(b=>b.onclick=()=>document.querySelectorAll('#scr .chip').forEach(x=>x.classList.toggle('a',x===b)));
+setInterval(()=>{
+ const on=S.mode!=='off'&&S.c<S.t-0.2;
+ S.v=on?Math.min(100,S.v+(S.t-S.c)*14):Math.max(0,S.v-25);
+ S.c+=((S.v/100)*0.12)-0.02;S.c=Math.round(S.c*100)/100;paint()},1800);
+S.out=2;S.off=10;S.track=false;
+function syncTrack(){$('tsw').classList.toggle('on',S.track);$('trk').textContent=S.track?'on':'off';
+ const raw=S.out+S.off,cl=Math.min(MAX,Math.max(MIN,raw));
+ $('tnote').textContent=(S.track?'Target now ':'Would set ')+cl.toFixed(1)+' °C'+(raw!==cl?' (limited to the valve range of 4–35 °C)':'')}
+function applyTrack(){syncTrack();if(S.track)setT(S.out+S.off,true)}
+$('tsw').onclick=()=>{if(S.child)return;S.track=!S.track;applyTrack()};
+$('of').oninput=e=>{S.off=+e.target.value;$('ofv').textContent='+'+S.off.toFixed(1)+' °C';applyTrack()};
+$('ot').oninput=e=>{S.out=+e.target.value;$('otv').textContent=S.out.toFixed(1)+' °C';applyTrack()};
+syncTrack();paint();
+</script></body></html>
