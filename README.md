@@ -29,7 +29,7 @@ Requirements: Node.js 18 or newer, Home Assistant reachable from this computer, 
 
 1. In Home Assistant, create a long-lived access token from your user profile.
 2. Copy `.env.example` to `.env.local` and fill in:
-   - `HA_URL`: your Home Assistant base URL, for example `http://homeassistant.local:8123`.
+   - `HA_URL`: the local URL shown by your Home Assistant installation.
    - `HA_TOKEN`: the long-lived access token. Keep this file private; it is ignored by Git.
    - `HA_ENTITY_ID`: the valve's `climate...` entity ID from Home Assistant.
 3. From this folder, run `node server.js`.
