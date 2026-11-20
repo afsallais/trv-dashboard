@@ -4,6 +4,10 @@
   "main": "./src/worker.js",
   "compatibility_date": "2026-11-20",
   "keep_vars": true,
+  "vars": {
+    "EWELINK_COUNTRY_CODE": "+31",
+    "EWELINK_REGION": "eu"
+  },
   "kv_namespaces": [
     {
       "binding": "EWELINK_KV"
