@@ -8,6 +8,7 @@
 :root[data-theme="dark"]{--bg:#15110e;--panel:#1f1914;--ink:#f1e8da;--mute:#8f8272;--line:#33291f;--heat:#ff7a2f;--cool:#5fb4d4;--ok:#6cc58b;--shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0008;color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
+*{transition:background-color .28s ease,border-color .28s ease,color .28s ease,box-shadow .28s ease,opacity .28s ease,transform .28s ease}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
 main{max-width:460px;min-height:100dvh;margin:0 auto;padding:18px 16px calc(104px + env(safe-area-inset-bottom,0px))}
@@ -16,7 +17,7 @@ h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin:0;color:v
 h1 b{color:var(--ink)}
 .pill{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mute)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px #3d8b5a30}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow);animation:card-in .42s cubic-bezier(.2,.75,.25,1) both}
 .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between}
 /* dial */
 .dialwrap{position:relative;width:min(100%,320px);margin:0 auto;touch-action:none;user-select:none}
@@ -28,7 +29,7 @@ svg{display:block;width:100%;height:auto}
 .state{margin-top:10px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:4px 10px;border-radius:99px;border:1px solid var(--line)}
 .state.on{color:var(--heat);border-color:var(--heat)}
 .step{display:flex;justify-content:center;gap:12px;margin-top:6px}
-.step button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:22px;cursor:pointer}
+.step button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:22px;cursor:pointer;transition:transform .16s ease,background-color .25s ease}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg);border-radius:14px;padding:4px;border:1px solid var(--line)}
 .seg button{border:0;background:none;padding:11px 0;border-radius:10px;color:var(--mute);font:inherit;font-weight:600;cursor:pointer}
 .seg button.a{background:var(--ink);color:var(--bg)}
@@ -41,9 +42,10 @@ svg{display:block;width:100%;height:auto}
 .row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .row:first-of-type{border-top:0;padding-top:0}
 .row p{margin:0}.row .t{font-weight:600}.row .d{font-size:12.5px;color:var(--mute);margin-top:2px}
+.row input[type=number],.row select{max-width:132px;flex:none}
 .sw{flex:none;width:50px;height:30px;border-radius:99px;background:var(--line);position:relative;cursor:pointer;border:0;transition:.2s}
-.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--panel);box-shadow:0 1px 3px #0005;transition:.2s}
-.sw.on{background:var(--heat)}.sw.on::after{left:23px}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--panel);box-shadow:0 1px 3px #0005;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.sw.on{background:var(--heat)}.sw.on::after{transform:translateX(20px)}
 input[type=range]{width:100%;accent-color:var(--heat);margin:8px 0 0}
 .val{font-size:13px;color:var(--ink)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -61,10 +63,28 @@ button:disabled{opacity:.45;cursor:not-allowed}
 body.connected .demo-only,body.local-mode .demo-only{display:none}
 .view[hidden]{display:none!important}
 .dock{position:fixed;z-index:10;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,460px);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line)}
-.dock-inner{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;border-radius:20px;background:var(--bg);padding:5px}
+.dock-inner{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;border-radius:20px;background:var(--bg);padding:5px}
 .dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;border:0;border-radius:15px;background:none;color:var(--mute);font-family:inherit;font-size:10px;font-weight:600;line-height:1.1;cursor:pointer}
 .dock button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
 .dock .ico{font-size:19px;line-height:1}
+.tk{transition:stroke .3s ease}
+.view:not([hidden]){animation:view-in .32s ease both}
+.stat,.chip,.dock button{transition:transform .18s ease,background-color .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease}
+@media(hover:hover){.card:hover{box-shadow:0 2px 0 #fff8 inset,0 12px 30px #6b4e2a20}.chip:hover,.dock button:hover{transform:translateY(-1px)}.step button:hover{transform:scale(1.06)}}
+.chip:active,.dock button:active,.step button:active{transform:scale(.96)}
+@keyframes view-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes card-in{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+.notice{padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:var(--bg);font-size:12px;color:var(--mute);margin-bottom:12px}
+.formrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+select,input[type=time],input[type=number]{width:100%;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--bg);color:var(--ink);font:inherit}
+.schedule-list{display:grid;gap:7px;margin-top:12px}
+.schedule-item{display:grid;grid-template-columns:1fr 1fr auto;align-items:center;gap:8px;padding:9px;background:var(--bg);border-radius:12px;font-size:13px}
+.schedule-item button{border:0;background:none;color:var(--heat);font-size:18px}
+.wide{width:100%;margin-top:10px}
+.chart{width:100%;margin-top:12px;border-radius:14px;background:var(--bg);border:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11px;color:var(--mute)}
+.legend span{display:flex;align-items:center;gap:5px}.key{width:9px;height:9px;border-radius:50%;display:inline-block}.key.target{background:var(--heat)}.key.room{background:var(--cool)}.key.heat{background:var(--mute)}
 @media(min-width:700px){body{background:radial-gradient(ellipse at top,#f8f4ec,var(--bg) 70%)}:root[data-theme="dark"] body{background:var(--bg)}}
 </style></head>
 <body><main>
@@ -82,7 +102,7 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
   </div>
   <div class="step"><button id="m">−</button><button id="p">+</button></div>
   <div style="height:14px"></div>
-  <div class="seg" id="mode"><button data-m="off">Off</button><button data-m="auto">Auto</button><button data-m="heat">Heat</button></div>
+  <div class="seg" id="mode"><button data-m="off">Off</button><button data-m="auto">Auto</button><button data-m="heat">Manual</button></div>
 </section>
 
 <section class="card">
@@ -95,7 +115,7 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
 </section>
 </div>
 
-<div class="view" data-view="climate" hidden>
+<div class="view" data-view="features" hidden>
 <section class="card demo-only">
   <p class="lbl"><span>Outside tracking</span><span class="mono" id="trk">off</span></p>
   <div class="row" style="padding-top:0"><div><p class="t">Follow outside temperature</p><p class="d">Target = outside + offset, updated automatically</p></div><button class="sw" id="tsw"></button></div>
@@ -109,56 +129,94 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
 </section>
 </div>
 
+<div class="view" data-view="schedule" hidden>
+<section class="card">
+  <p class="lbl"><span>Weekly plans</span><span>3 plans · 7 days</span></p>
+  <div class="notice">TRV Gen 2 supports three weekly plans with up to 12 temperature changes per day. Preview controls below are not sent to the valve by this dashboard yet.</div>
+  <label class="d" for="activePlan">Plan used in Auto mode</label><select id="activePlan"><option value="1">Plan 1 · Home</option><option value="2">Plan 2 · Away</option><option value="3">Plan 3 · Holiday</option></select>
+  <label class="d" for="plan">Plan to edit</label><select id="plan"><option value="1">Plan 1 · Home</option><option value="2">Plan 2 · Away</option><option value="3">Plan 3 · Holiday</option></select>
+  <div class="scr" id="days"></div>
+  <div class="schedule-list" id="scheduleList"></div>
+  <div class="formrow"><input id="schTime" type="time" value="07:00" aria-label="Change time"><input id="schTemp" type="number" min="5" max="30" step="0.5" value="20" aria-label="Temperature in Celsius"></div>
+  <button class="chip wide" id="addPeriod">Add temperature change</button><p id="scheduleMsg" class="d" aria-live="polite"></p>
+</section>
+</div>
+
+<div class="view" data-view="features" hidden>
+<section class="card">
+  <p class="lbl"><span>Quick actions</span><span>preview</span></p>
+  <div class="notice">Boost and temporary timer are app-only valve functions. The timer returns to the previous settings when it ends. The current dashboard connection cannot send these commands yet.</div>
+  <div class="row"><div><p class="t">Boost</p><p class="d">Heat at 30 °C for up to 180 minutes</p></div><select id="boostDuration" aria-label="Boost duration"><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="180">3 hours</option></select><button class="sw" id="boost"></button></div>
+  <div class="formrow"><select id="timerTemp" aria-label="Timer temperature"></select><select id="timerDuration" aria-label="Timer duration"><option value="30">30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option><option value="240">4 hours</option><option value="480">8 hours</option><option value="1440">24 hours</option></select></div>
+  <button class="chip wide" id="startTimer">Start temporary timer</button>
+  <p id="timerStatus" class="d" style="font-size:12px"></p>
+</section>
+<section class="card">
+  <p class="lbl">Linked devices</p>
+  <div class="row"><div><p class="t">External room temperature</p><p class="d">Use a supported SONOFF temperature sensor</p></div><button class="sw" data-feature="remoteTemp"></button></div>
+  <div class="row"><div><p class="t">Remote temperature linkage</p><p class="d">Accept the remote setpoint for thermostat control</p></div><button class="sw" data-feature="remoteLinkage"></button></div>
+  <div class="row"><div><p class="t">Open-window sensor</p><p class="d">Pause heating while a linked window is open</p></div><button class="sw" data-feature="windowLink"></button></div>
+  <div class="row"><div><p class="t">Presence sensor linkage</p><p class="d">Heating response based on room occupancy</p></div><button class="sw" data-feature="presenceLink"></button></div>
+  <div class="notice">These linkages need compatible devices connected through the same supported Zigbee gateway. PR2 compatibility must be confirmed.</div>
+</section>
+<section class="card"><p class="lbl">Other Gen 2 features</p><div class="row"><div><p class="t">Energy saving</p><p class="d">The product page describes energy-saving and presence-linkage options. The current dashboard connection does not expose their controls.</p></div></div><div class="row"><div><p class="t">Multiple valves</p><p class="d">Group control needs a device selector and a compatible multi-device backend.</p></div></div><div class="row"><div><p class="t">Firmware updates</p><p class="d">Use eWeLink or a compatible Zigbee OTA service. Updates are not available in this dashboard.</p></div></div></section>
+<section class="card"><p class="lbl">Heating history</p><p class="d">Target temperature, room temperature, and heating activity. The TRV stores up to six months of history.</p><select id="historyRange" aria-label="History period"><option value="day">Day</option><option value="month">Month</option><option value="half_year">Six months</option></select><svg class="chart" id="historyChart" viewBox="0 0 360 190" role="img" aria-label="Temperature and heating activity history chart"></svg><div class="legend"><span><i class="key target"></i>Target °C</span><span><i class="key room"></i>Room °C</span><span><i class="key heat"></i>Heating %</span></div><p class="d" id="historyHint" aria-live="polite"></p></section>
+</div>
+
 <div class="view" data-view="settings" hidden>
-<section class="card demo-only">
+<section class="card">
   <p class="lbl">Safeguards</p>
   <div class="row"><div><p class="t">Child lock</p><p class="d">Disables the knob and buttons on the valve</p></div><button class="sw" data-k="child"></button></div>
   <div class="row"><div><p class="t">Open‑window detection</p><p class="d">Shuts the valve if temperature drops over 1.5 °C in 5 min</p></div><button class="sw on" data-k="ow"></button></div>
-  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Frost protection <span class="mono val" id="frv">7.0 °C</span></p><p class="d">Valve opens below this, even when off</p><input type="range" id="fr" min="4" max="35" step="0.5" value="7"></div>
+  <div class="row"><div><p class="t">Window currently detected</p><p class="d">Read-only device status</p></div><span class="mono val" id="windowDetected">—</span></div>
+  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Frost protection <span class="mono val" id="frv">7.0 °C</span></p><p class="d">Valve opens below this, even when off</p><input type="range" id="fr" min="5" max="15" step="0.5" value="7"></div>
 </section>
 </div>
 
 <div class="view" data-view="sensors" hidden>
-<section class="card demo-only">
+<section class="card">
   <p class="lbl">Sensing</p>
   <div class="two" id="sens"><button class="chip a" data-s="internal">Internal</button><button class="chip" data-s="external">External</button></div>
   <div id="extbox" style="display:none;margin-top:12px"><p class="t" style="margin:0;display:flex;justify-content:space-between">External input <span class="mono val" id="exv">20.5 °C</span></p><p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Feed from a room sensor (0–55 °C)</p><input type="range" id="ex" min="0" max="55" step="0.1" value="20.5"></div>
   <div style="height:14px"></div>
   <p class="t" style="margin:0;display:flex;justify-content:space-between">Calibration offset <span class="mono val" id="cav">0.0 °C</span></p>
-  <input type="range" id="ca" min="-12" max="12" step="0.2" value="0">
+  <input type="range" id="ca" min="-10" max="10" step="0.2" value="0">
   <div style="height:10px"></div>
-  <p class="t" style="margin:0;display:flex;justify-content:space-between">Temperature accuracy <span class="mono val" id="acv">−0.2 °C</span></p>
-  <p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Smaller = tighter, more motor movement</p>
-  <input type="range" id="ac" min="-1" max="-0.2" step="0.2" value="-0.2">
+  <p class="t" style="margin:0;display:flex;justify-content:space-between">Temperature accuracy <span class="mono val" id="acv">−1.0 °C</span></p>
+  <p class="d" style="margin:2px 0 0;font-size:12.5px;color:var(--mute)">Closer to 0 °C = tighter control and more motor movement</p>
+  <input type="range" id="ac" min="-1" max="-0.2" step="0.2" value="-1">
   <div class="row" style="margin-top:12px"><div><p class="t">Smart temperature control</p><p class="d">Adaptive valve opening (PID) · firmware 1.4.4+</p></div><button class="sw on" data-k="smart"></button></div>
+  <div class="row"><div><p class="t">Low-battery valve position</p><p class="d">Choose what the valve does if batteries are critically low</p></div><select id="lowBattery"><option value="close">Close</option><option value="open_30">Open 30%</option></select></div>
+  <div class="row"><div><p class="t">Valve opening while heating</p><p class="d">Override adaptive opening</p></div><input id="heatPosition" type="number" min="0" max="100" step="1" placeholder="—" aria-label="Valve opening while heating, percent"></div>
+  <div class="row"><div><p class="t">Valve opening while idle</p><p class="d">Keep below the heating position</p></div><input id="idlePosition" type="number" min="0" max="100" step="1" placeholder="—" aria-label="Valve opening while idle, percent"></div>
 </section>
 </div>
 
 <div class="view" data-view="settings" hidden>
-<section class="card demo-only">
+<section class="card">
   <p class="lbl">Display</p>
   <p class="d" style="margin:0;font-size:12.5px;color:var(--mute)">Screen orientation</p>
   <div class="scr" id="scr"><button class="chip a" data-d="0">0°</button><button class="chip" data-d="90">90°</button><button class="chip" data-d="180">180°</button><button class="chip" data-d="270">270°</button></div>
+  <button class="chip wide" id="calibrate">Start valve travel calibration</button><p class="d" id="calStatus" aria-live="polite"></p>
+  <p class="d">Anti-calcification maintenance runs automatically. Calibration controls require a compatible backend.</p>
 </section>
 
-<section class="card demo-only">
+<section class="card">
   <p class="lbl"><span>Motor telemetry</span><span>read‑only</span></p>
   <table class="mono">
-    <tr><td>Heating valve position</td><td>100 %</td></tr>
-    <tr><td>Idle valve position</td><td>0 %</td></tr>
-    <tr><td>Idle steps</td><td>3,482</td></tr>
-    <tr><td>Closing steps</td><td>3,455</td></tr>
-    <tr><td>Opening limit voltage</td><td>2,046 mV</td></tr>
-    <tr><td>Closing limit voltage</td><td>1,189 mV</td></tr>
-    <tr><td>Motor running voltage</td><td>1,874 mV</td></tr>
+    <tr><td>Heating valve position</td><td>—</td></tr>
+    <tr><td>Idle valve position</td><td>—</td></tr>
+    <tr><td>Motor and valve telemetry</td><td>Not connected</td></tr>
   </table>
+  <p class="d">The current Home Assistant connector does not read these Gen 2 diagnostic values.</p>
 </section>
 </div>
 <p class="foot" id="foot">Simulated preview · run server.js locally to connect Home Assistant</p>
 </main>
 <nav class="dock" aria-label="Main navigation"><div class="dock-inner" role="tablist">
 <button type="button" role="tab" aria-selected="true" data-tab="home"><span class="ico">⌂</span>Room</button>
-<button type="button" role="tab" aria-selected="false" data-tab="climate"><span class="ico">☼</span>Climate</button>
+<button type="button" role="tab" aria-selected="false" data-tab="schedule"><span class="ico">▦</span>Schedule</button>
+<button type="button" role="tab" aria-selected="false" data-tab="features"><span class="ico">☼</span>More</button>
 <button type="button" role="tab" aria-selected="false" data-tab="sensors"><span class="ico">◉</span>Sensors</button>
 <button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico">⚙</span>Settings</button>
 </div></nav>
@@ -167,12 +225,30 @@ const S={t:21,c:19.4,mode:'auto',child:false,ow:true,smart:true,v:0,local:false,
 const MIN=5,MAX=30,A0=135,SW=270,$=id=>document.getElementById(id);
 const svg=$('svg'),NS='http://www.w3.org/2000/svg';
 document.querySelectorAll('[data-tab]').forEach(tab=>tab.addEventListener('click',()=>{const name=tab.dataset.tab;document.querySelectorAll('.view').forEach(v=>v.hidden=v.dataset.view!==name);document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));window.scrollTo({top:0,behavior:'smooth'})}));
+const dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+let schedulePlan='1',scheduleDay='Monday',plans={};
+try{plans=JSON.parse(localStorage.getItem('trvSchedules')||'{}')}catch{}
+try{const ap=localStorage.getItem('trvActivePlan'),ep=localStorage.getItem('trvEditedPlan');if(['1','2','3'].includes(ap))$('activePlan').value=ap;if(['1','2','3'].includes(ep)){$('plan').value=ep;schedulePlan=ep}}catch{}
+function daySchedule(){const key=schedulePlan+'|'+scheduleDay;if(!plans[key])plans[key]=[{time:'00:00',temp:17}];return plans[key]}
+function renderSchedule(){if(!$('days'))return;$('days').innerHTML=dayNames.map(d=>`<button class="chip ${d===scheduleDay?'a':''}" data-day="${d}">${d.slice(0,2)}</button>`).join('');$('days').querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{scheduleDay=b.dataset.day;renderSchedule()});const rows=[...daySchedule()].sort((a,b)=>a.time.localeCompare(b.time));$('scheduleList').innerHTML=rows.map((r,i)=>`<div class="schedule-item"><span class="mono">${r.time}</span><span>${Number(r.temp).toFixed(1)} °C</span><button type="button" aria-label="Remove ${r.time}" data-remove="${i}" ${r.time==='00:00'?'disabled':''}>×</button></div>`).join('');$('scheduleList').querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{const r=daySchedule();if(r[b.dataset.remove]?.time!=='00:00'){r.splice(+b.dataset.remove,1);saveSchedules()}})}
+function saveSchedules(){try{localStorage.setItem('trvSchedules',JSON.stringify(plans))}catch{}renderSchedule()}
+function lockAdvancedControls(){const advanced=document.querySelectorAll('#plan,#activePlan,#schTime,#schTemp,#addPeriod,#boost,#boostDuration,#timerTemp,#timerDuration,#startTimer,[data-feature],#fr,#ex,#ca,#ac,#lowBattery,#heatPosition,#idlePosition,#calibrate,#historyRange,#of,#ot,#tsw,[data-k],#sens button,#scr button');advanced.forEach(el=>{el.disabled=S.local||S.connected;if(el.disabled)el.title='The current Home Assistant connector does not support this control.'});document.querySelectorAll('#days button,#scheduleList button').forEach(el=>{el.disabled=S.local||S.connected});updatePidControls()}
+function updatePidControls(){const smart=document.querySelector('[data-k="smart"]')?.classList.contains('on');$('ac').disabled=Boolean(smart)||S.local||S.connected;$('heatPosition').disabled=Boolean(smart)||S.local||S.connected;$('idlePosition').disabled=Boolean(smart)||S.local||S.connected}
+const historySamples={day:{labels:['00','03','06','09','12','15','18','21'],target:[17,17,18,20,20,20,19,18],room:[16.8,16.7,17.2,18.4,19.1,19.6,19.1,18.4],heat:[12,26,58,74,42,24,38,46]},month:{labels:['1','5','9','13','17','21','25','30'],target:[18,18,19,20,20,19,18,18],room:[17.4,17.8,18.1,19.2,19.5,18.7,18.2,17.9],heat:[44,38,58,70,35,48,40,52]},half_year:{labels:['Jun','Jul','Aug','Sep','Oct','Nov'],target:[19,19,18,19,20,20],room:[18.1,19.4,18.3,18.2,19.1,18.7],heat:[62,8,4,42,68,54]}};
+function renderHistory(){const chart=$('historyChart');if(!chart)return;const range=$('historyRange').value;const data=historySamples[range]||historySamples.day;const x0=34,x1=346,top=24,bottom=148;const x=i=>x0+i*(x1-x0)/(data.labels.length-1);const y=v=>bottom-(v-15)/10*(bottom-top);let svg='';for(let temp=15;temp<=25;temp+=5){const yy=y(temp);svg+=`<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="4" y="${yy+3}" font-size="9" fill="var(--mute)" font-family="monospace">${temp}°</text>`}if(S.local||S.connected){svg+=`<text x="180" y="91" text-anchor="middle" font-size="11" fill="var(--mute)" font-family="sans-serif">No history data from this connection</text>`;$('historyHint').textContent='The current Home Assistant connector reads live climate values only.'}else{const barW=Math.min(18,(x1-x0)/data.labels.length*.44);data.heat.forEach((v,i)=>{const bh=v*.62;svg+=`<rect x="${x(i)-barW/2}" y="${bottom-bh}" width="${barW}" height="${bh}" rx="3" fill="var(--mute)" opacity=".25"/>`});for(const [key,color] of [['target','var(--heat)'],['room','var(--cool)']]){const path=data[key].map((v,i)=>`${i?'L':'M'}${x(i)} ${y(v)}`).join(' ');svg+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;data[key].forEach((v,i)=>{svg+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${color}"/>`})}data.labels.forEach((label,i)=>{svg+=`<text x="${x(i)}" y="172" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${label}</text>`});$('historyHint').textContent='Illustrative preview data only · no device history is connected.'}chart.innerHTML=svg}
+$('plan').onchange=()=>{schedulePlan=$('plan').value;try{localStorage.setItem('trvEditedPlan',schedulePlan)}catch{}renderSchedule();lockAdvancedControls()};$('activePlan').onchange=()=>{try{localStorage.setItem('trvActivePlan',$('activePlan').value)}catch{}};
+$('addPeriod').onclick=()=>{const time=$('schTime').value,temp=Number($('schTemp').value),rows=daySchedule();if(rows.length>=12){$('scheduleMsg').textContent='This day already has 12 changes.';return}if(!time||!Number.isFinite(temp)||temp<5||temp>30||temp*2%1){$('scheduleMsg').textContent='Use 5–30 °C in 0.5 °C steps.';return}if(rows.some(r=>r.time===time)){$('scheduleMsg').textContent='There is already a change at this time.';return}rows.push({time,temp});$('scheduleMsg').textContent='Saved in this browser preview only.';saveSchedules();lockAdvancedControls()};renderSchedule();
+$('boost').onclick=()=>{$('boost').classList.toggle('on');$('timerStatus').textContent=`Preview only · Boost ${$('boost').classList.contains('on')?'on':'off'} · ${$('boostDuration').value} minutes; no command sent to the valve.`};
+for(let t=5;t<=30;t+=0.5){const o=document.createElement('option');o.value=t;o.textContent=t.toFixed(1)+' °C';if(t===21)o.selected=true;$('timerTemp').append(o)}
+$('startTimer').onclick=()=>{$('timerStatus').textContent=`Preview only · ${$('timerTemp').value} °C for ${$('timerDuration').selectedOptions[0].text}; no command sent to the valve.`};
+document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>{b.classList.toggle('on');b.setAttribute('aria-pressed',String(b.classList.contains('on')))});
+$('calibrate').onclick=()=>{$('calStatus').textContent='Preview only · calibration requires a compatible live Zigbee connection. No command was sent.'};$('historyRange').onchange=renderHistory;renderHistory();lockAdvancedControls();
 const pt=(a,r)=>{const x=(a-90)*Math.PI/180;return[150+r*Math.cos(x),150+r*Math.sin(x)]};
 const ang=t=>A0+(t-MIN)/(MAX-MIN)*SW;
 let h='<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1"/>';
 for(let t=MIN;t<=MAX;t+=0.5){const a=ang(t),big=t%5===0,mid=Number.isInteger(t);const[x1,y1]=pt(a,big?118:mid?122:125),[x2,y2]=pt(a,132);h+=`<line class="tk" data-t="${t}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${big?2.4:1.3}" stroke-linecap="round"/>`}
 for(let t=5;t<=30;t+=5){const[x,y]=pt(ang(t),104);h+=`<text x="${x}" y="${y+3}" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${t}</text>`}
-h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3"/>';
+h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3" style="transition:cx .16s ease,cy .16s ease"/>';
 svg.innerHTML=h;
 function paint(){
  const a=ang(S.t);
@@ -189,7 +265,7 @@ function paint(){
  $('fc').textContent=S.local&&!S.connected?'—':(S.connected?(S.fault==null?'—':S.fault):'0');
  document.querySelectorAll('#mode button').forEach(b=>{b.classList.toggle('a',b.dataset.m===S.mode);b.disabled=S.local&&(!S.connected||!S.hvacModes.includes(b.dataset.m))});
  $('m').disabled=$('p').disabled=S.local&&!S.connected;
- $('mini').textContent=S.mode.toUpperCase()+(S.child?' · LOCKED':'');
+ $('mini').textContent=(S.mode==='heat'?'MANUAL':S.mode.toUpperCase())+(S.child?' · LOCKED':'');
 }
 let commandTimer;
 function setT(t,auto){if(S.child&&!auto)return;if(S.local&&!S.connected)return;if(!auto&&S.track){S.track=false;syncTrack()}S.t=Math.round(Math.min(MAX,Math.max(MIN,t))*2)/2;paint();if(S.connected){clearTimeout(commandTimer);commandTimer=setTimeout(()=>sendControl({temperature:S.t}),450)}}
@@ -200,7 +276,7 @@ dw.addEventListener('pointermove',e=>{if(drag)fromEvt(e)});
 dw.addEventListener('pointerup',()=>drag=false);
 $('m').onclick=()=>setT(S.t-0.5);$('p').onclick=()=>setT(S.t+0.5);
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{if(S.local&&!S.hvacModes.includes(b.dataset.m))return;S.mode=b.dataset.m;paint();if(S.connected)sendControl({mode:S.mode})});
-document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint()}});
+document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint();if(b.dataset.k==='smart')updatePidControls()}});
 const bind=(id,out,f)=>$(id).oninput=e=>{$(out).textContent=f(+e.target.value)};
 bind('fr','frv',v=>v.toFixed(1)+' °C');bind('ex','exv',v=>v.toFixed(1)+' °C');
 bind('ca','cav',v=>(v>0?'+':'')+v.toFixed(1)+' °C');bind('ac','acv',v=>v.toFixed(1).replace('-','−')+' °C');
@@ -224,10 +300,10 @@ function setConnection(text,ok=false){$('conn').textContent=text;$('dot').classL
 function renderDevice(d){
  S.connected=true;S.t=Number(d.target_temperature??S.t);S.c=Number(d.current_temperature??S.c);S.mode=['off','heat','auto'].includes(d.state)?d.state:S.mode;S.hvacAction=d.hvac_action;
  S.hvacModes=(d.hvac_modes||[]).map(x=>String(x).toLowerCase());S.v=d.valve_position==null?null:Number(d.valve_position);S.battery=d.battery==null?null:Number(d.battery);S.fault=d.fault??null;
- document.body.classList.add('connected');$('batt').textContent='LIVE';$('run').textContent=d.hvac_action|| (S.mode==='off'?'idle':'—');$('run').className='state'+(d.hvac_action==='heating'?' on':'');
+ document.body.classList.add('connected');$('batt').textContent='LIVE';$('run').textContent=d.hvac_action|| (S.mode==='off'?'idle':'—');$('run').className='state'+(d.hvac_action==='heating'?' on':'');lockAdvancedControls();renderHistory();
  $('foot').textContent='Live · commands sent through your local Home Assistant instance';setConnection('Connected · '+d.friendly_name,true);paint();
 }
 async function refreshDevice(){try{const r=await fetch('/api/state',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Home Assistant connection failed');renderDevice(d)}catch(e){S.connected=false;document.body.classList.remove('connected');$('batt').textContent='OFFLINE';setConnection('Local connector unavailable · '+e.message,false);$('foot').textContent='No live connection · controls disabled until Home Assistant responds';paint()}}
 async function sendControl(command){if(!S.connected)return;setConnection('Sending to Home Assistant…',true);try{const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(command)});const d=await r.json();if(!r.ok)throw new Error(d.error||'Command failed');renderDevice(d.state)}catch(e){setConnection('Command failed · '+e.message,false);S.connected=false;document.body.classList.remove('connected');paint()}}
- if(localHost()&&location.protocol.startsWith('http')){S.local=true;document.body.classList.add('local-mode');$('batt').textContent='CONNECTING';$('foot').textContent='Waiting for the local Home Assistant connector…';refreshDevice();setInterval(()=>{if(!drag)refreshDevice()},5000)}
+ if(localHost()&&location.protocol.startsWith('http')){S.local=true;document.body.classList.add('local-mode');lockAdvancedControls();renderHistory();$('batt').textContent='CONNECTING';$('foot').textContent='Waiting for the local Home Assistant connector…';refreshDevice();setInterval(()=>{if(!drag)refreshDevice()},5000)}
 </script></body></html>

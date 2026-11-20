@@ -33,12 +33,17 @@ There is no eWeLink cloud connector in the project yet because the device author
 
 ## Current dashboard behavior
 
-GitHub Pages is a visual preview only. No buttons on that public page control the physical valve. The legacy `server.js` connector reads a Home Assistant `climate` entity and sends temperature/mode changes; it is described here only for users who choose to run that earlier integration. It does not connect directly to eWeLink or the PR2.
+The mobile dashboard now surfaces the Gen 2 feature set: three weekly plans, 7-day schedules with up to 12 changes per day, Auto/Manual/Off modes, boost and timer, external temperature, window and presence linkage, child lock, frost protection, temperature calibration/accuracy, adaptive control, valve opening limits, low-battery valve behavior, screen direction, valve calibration, diagnostics, and a history graph. The graph uses labeled illustrative data in preview mode and shows no history when connected to the current Home Assistant connector.
+
+GitHub Pages is a visual preview only. Schedule and quick-action settings in the preview are saved in that browser and do not reach the physical valve. The legacy `server.js` connector reads a Home Assistant `climate` entity and sends only target-temperature and supported HVAC-mode changes. In local mode, the newly surfaced Gen 2 features are shown but disabled because that connector does not implement them. It does not connect directly to eWeLink or the PR2.
+
+SONOFF's product page lists ZBBridge-U among its Matter bridges and its current TRV manual recommends ZBBridge-P/U, NSPanel Pro, iHost and several dongles; the PR2 is not explicitly named in those TRV-specific compatibility lists. SONOFF also states that full native Zigbee2MQTT support for TRV-ZBT requires Zigbee2MQTT 2.12.1 or later. Zigbee2MQTT documents the individual device controls and schedule fields. This confirms a path for a later feature-complete connector, but does not verify the PR2/eWeLink developer API path.
 
 ## Hardware references
 
-- [TRV-ZBT Gen 2 product page](https://sonoff.tech/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt)
 - [TRV-ZBT user manual and pairing guide](https://support.sonoff.tech/trv-zbt-usermanual/)
+- [TRV-ZBT product features and compatibility](https://sonoff.tech/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt)
+- [Zigbee2MQTT TRV-ZBT supported controls](https://www.zigbee2mqtt.io/devices/TRV-ZBT.html)
 - [ZBBridge-PR2 user manual and Matter setup](https://support.sonoff.tech/zb-bridge-pr2-usermanual/)
 - [eWeLink cloud API documentation](https://github.com/CoolKit-Technologies/eWeLink-API)
 - [eWeLink API access options and limits](https://github.com/CoolKit-Technologies/eWeLink-API/blob/main/en/Pricing.md)
