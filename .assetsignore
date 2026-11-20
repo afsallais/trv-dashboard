@@ -1,0 +1,13 @@
+README.md
+functions/
+src/
+wrangler.jsonc
+server.js
+package.json
+.gitignore
+.assetsignore
+.env.local
+.dev.vars
+.wrangler/
+node_modules/
+npm-debug.log*

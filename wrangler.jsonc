@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "trv-dashboard",
+  "main": "./src/worker.js",
+  "compatibility_date": "2026-11-20",
+  "keep_vars": true,
+  "kv_namespaces": [
+    {
+      "binding": "EWELINK_KV"
+    }
+  ],
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  }
+}

@@ -1,6 +1,6 @@
 # SONOFF TRV-ZBT Cloud Dashboard
 
-A mobile-first dashboard for the SONOFF TRV-ZBT Gen 2 and Zigbee sensors connected through a SONOFF ZBBridge-P. The intended deployment is Cloudflare Pages with a server-side Pages Function that talks to eWeLink Cloud. GitHub Pages remains a demo only because it cannot run this protected backend.
+A mobile-first dashboard for the SONOFF TRV-ZBT Gen 2 and Zigbee sensors connected through a SONOFF ZBBridge-P. The cloud deployment is a single Cloudflare Worker serving the dashboard and its protected eWeLink API from the same origin. GitHub Pages remains a demo only because it cannot run this backend.
 
 ## Hardware support confirmed in SONOFF documentation
 
@@ -11,11 +11,13 @@ A mobile-first dashboard for the SONOFF TRV-ZBT Gen 2 and Zigbee sensors connect
 
 The dashboard discovers account devices and reads their latest eWeLink status. It displays temperature, humidity, contact, tamper, and battery when those values are actually included in the API response. It enables TRV setpoint or mode commands only after you configure a verified field map for the exact model. No guessed write fields are enabled.
 
-## Cloudflare Pages setup
+## Cloudflare Worker setup
 
-1. Create a Cloudflare Pages project connected to this Git repository. Use the repository root as the output directory; there is no build command. Pages automatically serves `functions/api/` as server-side API routes.
-2. Create a Cloudflare KV namespace and add it to the Pages project as a binding named **`EWELINK_KV`**.
-3. Add these as **Pages environment variables/secrets** (Production and Preview as appropriate). Never commit them or put them in dashboard JavaScript:
+This repository has an explicit `wrangler.jsonc` Worker configuration. It resolves the Wrangler error that occurs when it tries to infer a Pages project from a `functions/` folder. The API entry point is `src/worker.js`; static assets are the repository root, with source/config files excluded by `.assetsignore`.
+
+1. The configured Worker name is `trv-dashboard`, matching the Worker you created. Run `npx wrangler deploy` from the repository root to deploy the Worker and dashboard together. `/api/*` requests go through the Worker; the dashboard and API share one origin, so its sign-in cookie works without cross-origin settings.
+2. Wrangler is configured with an **`EWELINK_KV`** binding for token storage and sign-in rate limits. Current Wrangler supports automatic KV provisioning; if your account/deployment does not provision it, create a KV namespace and add its ID under `kv_namespaces` in `wrangler.jsonc`.
+3. In Cloudflare → Workers → `trv-dashboard` → Settings → Variables and Secrets, add these as secrets. `keep_vars` is enabled so Wrangler preserves dashboard-configured values:
 
    | Name | Type | Purpose |
    | --- | --- | --- |
@@ -24,16 +26,18 @@ The dashboard discovers account devices and reads their latest eWeLink status. I
    | `EWELINK_APP_SECRET` | Secret | App secret issued with that application. |
    | `EWELINK_ACCOUNT` | Secret | eWeLink account email or phone number. |
    | `EWELINK_PASSWORD` | Secret | eWeLink account password used by the documented login endpoint. |
-   | `EWELINK_COUNTRY_CODE` | Variable | `+31` for your Netherlands account. |
-   | `EWELINK_REGION` | Variable | `eu` for the Netherlands. |
-   | `EWELINK_CONTROL_FIELDS` | Secret/variable | Optional JSON mapping of model-specific writable fields, only after verified against your device. Leave unset initially. |
+   | `EWELINK_COUNTRY_CODE` | Variable | Optional; defaults to `+31`. |
+   | `EWELINK_REGION` | Variable | Optional; defaults to `eu`. |
+   | `EWELINK_CONTROL_FIELDS` | Secret/variable | Optional model-specific fields, only after verification. Leave unset initially. |
 
-4. Deploy. Open the Pages URL and sign in with `DASHBOARD_PASSWORD`. The API session is an HTTP-only, same-site cookie; failed passwords are rate-limited using the KV namespace. The eWeLink password and tokens stay in the Pages Function and KV, not in the browser or repository.
+4. Open the Worker URL and sign in with `DASHBOARD_PASSWORD`. The API session is an HTTP-only, same-site cookie; failed passwords are rate-limited using KV. The eWeLink password and tokens stay in the Worker and KV, not in the browser or repository.
 5. In the eWeLink app, set up the ZBBridge-P, update its firmware, then add each Zigbee device to that bridge. In the dashboard, use **Sensors → Refresh devices**. The bridge, TRV, and sensors must be visible in the eWeLink account associated with the API credentials.
 
 ### eWeLink developer access is required
 
 The official API requires an assigned APPID/APPSECRET, account authorization for the requested device types, and account login. SONOFF/CoolKit's current developer guide says APPIDs are assigned after business cooperation. If the developer portal still does not let you create an application, the connector cannot authenticate yet. Ask eWeLink/CoolKit for an APPID and confirmation that **TRV-ZBT plus Zigbee sub-devices behind ZBBridge-P** are authorized for that APPID. An eWeLink account alone is not enough.
+
+This project does not use Firebase or Firestore. Keep any Firestore database rules denied unless another application you own needs that database; this dashboard's storage is Cloudflare KV.
 
 ## Verify the device-specific commands after pairing
 
@@ -60,21 +64,21 @@ After the devices arrive:
    }
    ```
 
-   Replace every example value with the values confirmed for your API response; the placeholders above are not usable commands. `currentTemperature`, `battery`, and `valvePosition` are optional read-only field mappings. Set the JSON as a Cloudflare Pages variable/secret and redeploy. Then verify each mode and setpoint against the physical TRV screen and eWeLink app.
+   Replace every example value with the values confirmed for your API response; the placeholders above are not usable commands. `currentTemperature`, `battery`, and `valvePosition` are optional read-only field mappings. Set the JSON as a Cloudflare Worker variable/secret and redeploy. Then verify each mode and setpoint against the physical TRV screen and eWeLink app.
 5. The dashboard currently leaves schedules, Boost, temporary timer, child lock, calibration, valve limits, and other advanced settings disabled in cloud mode. Enable those only after each exact field and behavior has been verified; they cannot be safely invented from the generic cloud API docs.
 
 ## Link the extra sensors to the TRV
 
 The dashboard can display readings and states that the API returns. A displayed SNZB-02P value does **not** automatically become the TRV's thermostat input, and a displayed open window does **not** itself stop heating. In eWeLink, create the supported sensor/valve linkage or smart scene and verify it operates with the phone/dashboard closed. SONOFF's TRV manual describes a linked door/window sensor as a trigger for open-window detection; configure the supported linkage in the eWeLink app. This allows the gateway/app automation to perform the Zigbee action independently of the dashboard.
 
-The API supports cloud control and device polling, not a direct browser-to-Zigbee connection. This design uses Cloudflare Pages Functions as the always-available cloud connector; it requires no home PC or Raspberry Pi. Zigbee actions still require the powered ZBBridge-P and eWeLink cloud/account availability.
+The API supports cloud control and device polling, not a direct browser-to-Zigbee connection. This design uses a Cloudflare Worker as the always-available cloud connector; it requires no home PC or Raspberry Pi. Zigbee actions still require the powered ZBBridge-P and eWeLink cloud/account availability.
 
 ## API and deployment notes
 
 - Cloud API base for Europe: `https://eu-apia.coolkit.cc`.
 - The backend reads the current device list and the project devices' status at a 60-second dashboard refresh. It spaces individual status requests to respect eWeLink's documented minimum call interval and polls at most 40 device statuses per refresh. Keep polling at this interval.
 - The public GitHub repository must never contain eWeLink credentials, KV contents, dashboard password, or session tokens. A private GitHub repository does not replace server-side secrets.
-- Cloudflare Pages deployments use the `functions/api/[[path]].js` handler. `server.js` is retained only as the earlier Home Assistant local prototype and is not used by the Cloudflare deployment.
+- `wrangler.jsonc` is the source of truth for the `trv-dashboard` Worker and its KV binding. `src/worker.js` routes API requests and passes static dashboard requests to Workers Assets. `src/ewelink-api.js` contains the protected eWeLink connector. `server.js` is retained only as the earlier Home Assistant local prototype and is not used by the Cloudflare deployment.
 - History, Boost countdown, weather estimate, and schedule UI have distinct preview behavior. The generic eWeLink API does not provide the TRV's six-month history or confirm advanced TRV command semantics through the documentation used here; no preview values should be mistaken for device history or a sent command.
 
 ## References
@@ -88,6 +92,8 @@ The API supports cloud control and device polling, not a direct browser-to-Zigbe
 
 ## Project files
 
-- `index.html` — dashboard UI, demo mode on GitHub Pages and Cloudflare-connected status/controls when deployed with Functions.
-- `functions/api/[[path]].js` — protected Cloudflare Pages API for session login, eWeLink authentication, device discovery/status, and verified-field TRV writes.
+- `index.html` — dashboard UI, demo mode on GitHub Pages and cloud-connected status/controls on the Worker.
+- `src/worker.js` — Cloudflare Worker entry point.
+- `src/ewelink-api.js` — protected API for dashboard sessions, eWeLink authentication, device discovery/status, and verified-field TRV writes.
+- `wrangler.jsonc` — Worker name, static assets, and KV binding.
 - `server.js` — legacy local Home Assistant prototype.
