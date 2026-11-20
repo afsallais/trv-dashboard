@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>try{const savedTheme=localStorage.getItem('trvTheme');if(savedTheme==='light'||savedTheme==='dark')document.documentElement.dataset.theme=savedTheme}catch{}</script>
 <title>TRV-ZBT · Valve Console</title>
 <style>
 :root{--bg:#efe9df;--panel:#f8f4ec;--ink:#2a2420;--mute:#8a7f72;--line:#d9d0c1;--heat:#e8590c;--cool:#2f7f9e;--ok:#3d8b5a;--shadow:0 1px 0 #fff8 inset,0 8px 24px #6b4e2a18;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -16,6 +17,8 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin:0;color:var(--mute);font-weight:600}
 h1 b{color:var(--ink)}
 .pill{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mute)}
+.theme-toggle{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--ink);font-size:18px;cursor:pointer;box-shadow:var(--shadow)}
+.theme-toggle:active{transform:scale(.92)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px #3d8b5a30}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow);animation:card-in .42s cubic-bezier(.2,.75,.25,1) both}
 .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between}
@@ -83,13 +86,15 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 .schedule-item button{border:0;background:none;color:var(--heat);font-size:18px}
 .wide{width:100%;margin-top:10px}
 .weather-temp{font-size:32px;font-weight:400;letter-spacing:-.04em}
-.chart{width:100%;margin-top:12px;border-radius:14px;background:var(--bg);border:1px solid var(--line)}
+.chart-wrap{position:relative;width:100%;height:230px;margin-top:12px;padding:12px;border-radius:16px;background:var(--bg);border:1px solid var(--line);min-width:0}
+.boost-primary{width:100%;min-height:48px;border:0;border-radius:15px;background:linear-gradient(135deg,#ff6a3d,#e84a26);color:#fff;font:inherit;font-weight:700;box-shadow:0 8px 18px #e8590c30;cursor:pointer}
+.boost-primary.active{background:var(--ink);color:var(--bg);box-shadow:var(--shadow)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11px;color:var(--mute)}
 .legend span{display:flex;align-items:center;gap:5px}.key{width:9px;height:9px;border-radius:50%;display:inline-block}.key.target{background:var(--heat)}.key.room{background:var(--cool)}.key.heat{background:var(--mute)}
 @media(min-width:700px){body{background:radial-gradient(ellipse at top,#f8f4ec,var(--bg) 70%)}:root[data-theme="dark"] body{background:var(--bg)}}
 </style></head>
 <body><main>
-<header><h1><b>TRV‑ZBT</b> · Valve console</h1><div class="pill"><span class="dot off" id="dot"></span><span id="batt" class="mono">DEMO</span></div></header>
+<header><h1><b>TRV‑ZBT</b> · Valve console</h1><div class="pill"><span class="dot off" id="dot"></span><span id="batt" class="mono">DEMO</span><button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch to dark mode" aria-pressed="false">☾</button></div></header>
 <div class="connection" id="conn">Demo preview · hardware control runs from the local Home Assistant connector.</div>
 
 <div class="view" data-view="home">
@@ -114,11 +119,15 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
     <div class="stat"><small>Fault</small><b class="fault mono" id="fc">0</b><div class="sub" style="margin:4px 0 0">none</div></div>
   </div>
 </section>
+<section class="card">
+  <p class="lbl"><span>Quick boost</span><span class="mono" id="boostCountdown">Ready</span></p>
+  <button type="button" class="boost-primary" id="homeBoost" aria-pressed="false">Start boost · 30 min</button>
+  <p class="d" id="homeBoostNote" style="font-size:12px;margin:10px 0 0">Preview only · boost countdown does not send a command to the valve.</p>
+</section>
 <section class="card" aria-live="polite">
   <p class="lbl"><span>Outside · Delft, Netherlands</span><span class="mono" id="weatherWhen">—</span></p>
   <div class="weather-temp mono"><span id="otv">—</span><sup style="font-size:15px;color:var(--mute)"> °C</sup></div>
   <div class="row"><p class="d" id="weatherStatus">Loading current weather estimate…</p><button class="chip" type="button" id="weatherRefresh" aria-label="Refresh outside temperature">↻ Refresh</button></div>
-  <p class="d" style="font-size:11px">Current outdoor estimate from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open‑Meteo</a> · updates every 15 minutes</p>
 </section>
 </div>
 
@@ -166,7 +175,7 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
   <div class="notice">These linkages need compatible devices connected through the same supported Zigbee gateway. PR2 compatibility must be confirmed.</div>
 </section>
 <section class="card"><p class="lbl">Other Gen 2 features</p><div class="row"><div><p class="t">Energy saving</p><p class="d">The product page describes energy-saving and presence-linkage options. The current dashboard connection does not expose their controls.</p></div></div><div class="row"><div><p class="t">Multiple valves</p><p class="d">Group control needs a device selector and a compatible multi-device backend.</p></div></div><div class="row"><div><p class="t">Firmware updates</p><p class="d">Use eWeLink or a compatible Zigbee OTA service. Updates are not available in this dashboard.</p></div></div></section>
-<section class="card"><p class="lbl">Heating history</p><p class="d">Target temperature, room temperature, and heating activity. The TRV stores up to six months of history.</p><select id="historyRange" aria-label="History period"><option value="day">Day</option><option value="month">Month</option><option value="half_year">Six months</option></select><svg class="chart" id="historyChart" viewBox="0 0 360 190" role="img" aria-label="Temperature and heating activity history chart"></svg><div class="legend"><span><i class="key target"></i>Target °C</span><span><i class="key room"></i>Room °C</span><span><i class="key heat"></i>Heating %</span></div><p class="d" id="historyHint" aria-live="polite"></p></section>
+<section class="card"><p class="lbl">Heating history</p><p class="d">Target temperature, room temperature, and heating activity. The TRV stores up to six months of history.</p><select id="historyRange" aria-label="History period"><option value="day">Day</option><option value="month">Month</option><option value="half_year">Six months</option></select><div class="chart-wrap"><canvas id="historyChart" role="img" aria-label="Temperature and heating activity history chart"></canvas></div><div class="legend"><span><i class="key target"></i>Target °C</span><span><i class="key room"></i>Room °C</span><span><i class="key heat"></i>Heating %</span></div><p class="d" id="historyHint" aria-live="polite"></p></section>
 </div>
 
 <div class="view" data-view="settings" hidden>
@@ -226,9 +235,12 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 <button type="button" role="tab" aria-selected="false" data-tab="sensors"><span class="ico">◉</span>Sensors</button>
 <button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico">⚙</span>Settings</button>
 </div></nav>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
 const S={t:21,c:19.4,mode:'auto',child:false,ow:true,smart:true,v:0,local:false,connected:false,hvacModes:[],battery:null};
 const MIN=5,MAX=30,A0=135,SW=270,$=id=>document.getElementById(id);
+function syncThemeButton(){const explicit=document.documentElement.dataset.theme;const dark=explicit?explicit==='dark':matchMedia('(prefers-color-scheme: dark)').matches;$('themeToggle').textContent=dark?'☀':'☾';$('themeToggle').setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');$('themeToggle').setAttribute('aria-pressed',String(dark))}
+$('themeToggle').onclick=()=>{const explicit=document.documentElement.dataset.theme;const dark=explicit?explicit==='dark':matchMedia('(prefers-color-scheme: dark)').matches;const next=dark?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('trvTheme',next)}catch{}syncThemeButton();renderHistory()};syncThemeButton();
 const svg=$('svg'),NS='http://www.w3.org/2000/svg';
 document.querySelectorAll('[data-tab]').forEach(tab=>tab.addEventListener('click',()=>{const name=tab.dataset.tab;document.querySelectorAll('.view').forEach(v=>v.hidden=v.dataset.view!==name);document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));window.scrollTo({top:0,behavior:'smooth'})}));
 const dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -238,13 +250,17 @@ try{const ap=localStorage.getItem('trvActivePlan'),ep=localStorage.getItem('trvE
 function daySchedule(){const key=schedulePlan+'|'+scheduleDay;if(!plans[key])plans[key]=[{time:'00:00',temp:17}];return plans[key]}
 function renderSchedule(){if(!$('days'))return;$('days').innerHTML=dayNames.map(d=>`<button class="chip ${d===scheduleDay?'a':''}" data-day="${d}">${d.slice(0,2)}</button>`).join('');$('days').querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{scheduleDay=b.dataset.day;renderSchedule()});const rows=[...daySchedule()].sort((a,b)=>a.time.localeCompare(b.time));$('scheduleList').innerHTML=rows.map((r,i)=>`<div class="schedule-item"><span class="mono">${r.time}</span><span>${Number(r.temp).toFixed(1)} °C</span><button type="button" aria-label="Remove ${r.time}" data-remove="${i}" ${r.time==='00:00'?'disabled':''}>×</button></div>`).join('');$('scheduleList').querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{const r=daySchedule();if(r[b.dataset.remove]?.time!=='00:00'){r.splice(+b.dataset.remove,1);saveSchedules()}})}
 function saveSchedules(){try{localStorage.setItem('trvSchedules',JSON.stringify(plans))}catch{}renderSchedule()}
-function lockAdvancedControls(){const advanced=document.querySelectorAll('#plan,#activePlan,#schTime,#schTemp,#addPeriod,#boost,#boostDuration,#timerTemp,#timerDuration,#startTimer,[data-feature],#fr,#ex,#ca,#ac,#lowBattery,#heatPosition,#idlePosition,#calibrate,#historyRange,[data-k],#sens button,#scr button');advanced.forEach(el=>{el.disabled=S.local||S.connected;if(el.disabled)el.title='The current Home Assistant connector does not support this control.'});document.querySelectorAll('#days button,#scheduleList button').forEach(el=>{el.disabled=S.local||S.connected});updatePidControls()}
+function lockAdvancedControls(){const advanced=document.querySelectorAll('#plan,#activePlan,#schTime,#schTemp,#addPeriod,#boost,#homeBoost,#boostDuration,#timerTemp,#timerDuration,#startTimer,[data-feature],#fr,#ex,#ca,#ac,#lowBattery,#heatPosition,#idlePosition,#calibrate,#historyRange,[data-k],#sens button,#scr button');advanced.forEach(el=>{el.disabled=S.local||S.connected;if(el.disabled)el.title='The current Home Assistant connector does not support this control.'});document.querySelectorAll('#days button,#scheduleList button').forEach(el=>{el.disabled=S.local||S.connected});updatePidControls()}
 function updatePidControls(){const smart=document.querySelector('[data-k="smart"]')?.classList.contains('on');$('ac').disabled=Boolean(smart)||S.local||S.connected;$('heatPosition').disabled=Boolean(smart)||S.local||S.connected;$('idlePosition').disabled=Boolean(smart)||S.local||S.connected}
 const historySamples={day:{labels:['00','03','06','09','12','15','18','21'],target:[17,17,18,20,20,20,19,18],room:[16.8,16.7,17.2,18.4,19.1,19.6,19.1,18.4],heat:[12,26,58,74,42,24,38,46]},month:{labels:['1','5','9','13','17','21','25','30'],target:[18,18,19,20,20,19,18,18],room:[17.4,17.8,18.1,19.2,19.5,18.7,18.2,17.9],heat:[44,38,58,70,35,48,40,52]},half_year:{labels:['Jun','Jul','Aug','Sep','Oct','Nov'],target:[19,19,18,19,20,20],room:[18.1,19.4,18.3,18.2,19.1,18.7],heat:[62,8,4,42,68,54]}};
-function renderHistory(){const chart=$('historyChart');if(!chart)return;const range=$('historyRange').value;const data=historySamples[range]||historySamples.day;const x0=34,x1=346,top=24,bottom=148;const x=i=>x0+i*(x1-x0)/(data.labels.length-1);const y=v=>bottom-(v-15)/10*(bottom-top);let svg='';for(let temp=15;temp<=25;temp+=5){const yy=y(temp);svg+=`<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="4" y="${yy+3}" font-size="9" fill="var(--mute)" font-family="monospace">${temp}°</text>`}if(S.local||S.connected){svg+=`<text x="180" y="91" text-anchor="middle" font-size="11" fill="var(--mute)" font-family="sans-serif">No history data from this connection</text>`;$('historyHint').textContent='The current Home Assistant connector reads live climate values only.'}else{const barW=Math.min(18,(x1-x0)/data.labels.length*.44);data.heat.forEach((v,i)=>{const bh=v*.62;svg+=`<rect x="${x(i)-barW/2}" y="${bottom-bh}" width="${barW}" height="${bh}" rx="3" fill="var(--mute)" opacity=".25"/>`});for(const [key,color] of [['target','var(--heat)'],['room','var(--cool)']]){const path=data[key].map((v,i)=>`${i?'L':'M'}${x(i)} ${y(v)}`).join(' ');svg+=`<path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;data[key].forEach((v,i)=>{svg+=`<circle cx="${x(i)}" cy="${y(v)}" r="2.8" fill="${color}"/>`})}data.labels.forEach((label,i)=>{svg+=`<text x="${x(i)}" y="172" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${label}</text>`});$('historyHint').textContent='Illustrative preview data only · no device history is connected.'}chart.innerHTML=svg}
+let historyChartInstance;
+function renderHistory(){const canvas=$('historyChart');if(!canvas)return;if(!window.Chart){$('historyHint').textContent='Chart library unavailable. Check your internet connection and reload.';return}const live=S.local||S.connected,range=$('historyRange').value,data=historySamples[range]||historySamples.day,ink=getComputedStyle(document.documentElement).getPropertyValue('--mute').trim(),grid=getComputedStyle(document.documentElement).getPropertyValue('--line').trim(),heat=getComputedStyle(document.documentElement).getPropertyValue('--heat').trim(),cool=getComputedStyle(document.documentElement).getPropertyValue('--cool').trim();$('historyHint').textContent=live?'The current Home Assistant connector reads live climate values only.':'Illustrative preview data only · no device history is connected.';if(historyChartInstance)historyChartInstance.destroy();historyChartInstance=new Chart(canvas,{type:'bar',data:{labels:live?[]:data.labels,datasets:[{type:'bar',label:'Heating',data:live?[]:data.heat,yAxisID:'heating',backgroundColor:'rgba(130,120,108,.28)',borderRadius:5,barPercentage:.55,order:3},{type:'line',label:'Target °C',data:live?[]:data.target,yAxisID:'temperature',borderColor:heat,backgroundColor:heat,pointRadius:3,pointHoverRadius:5,borderWidth:2.5,tension:.32,order:1},{type:'line',label:'Room °C',data:live?[]:data.room,yAxisID:'temperature',borderColor:cool,backgroundColor:cool,pointRadius:3,pointHoverRadius:5,borderWidth:2.5,tension:.32,order:0}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},animation:{duration:500},plugins:{legend:{display:false},tooltip:{backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),titleColor:getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(),bodyColor:getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(),borderColor:grid,borderWidth:1,callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}${ctx.dataset.yAxisID==='temperature'?' °C':'%'}`}}},scales:{x:{grid:{display:false},ticks:{color:ink,font:{family:'ui-monospace,monospace',size:11}}},temperature:{type:'linear',position:'left',min:15,max:25,ticks:{stepSize:5,color:ink,callback:value=>`${value}°`},grid:{color:grid}},heating:{type:'linear',position:'right',min:0,max:100,display:false,grid:{drawOnChartArea:false}}}}})}
 $('plan').onchange=()=>{schedulePlan=$('plan').value;try{localStorage.setItem('trvEditedPlan',schedulePlan)}catch{}renderSchedule();lockAdvancedControls()};$('activePlan').onchange=()=>{try{localStorage.setItem('trvActivePlan',$('activePlan').value)}catch{}};
 $('addPeriod').onclick=()=>{const time=$('schTime').value,temp=Number($('schTemp').value),rows=daySchedule();if(rows.length>=12){$('scheduleMsg').textContent='This day already has 12 changes.';return}if(!time||!Number.isFinite(temp)||temp<5||temp>30||temp*2%1){$('scheduleMsg').textContent='Use 5–30 °C in 0.5 °C steps.';return}if(rows.some(r=>r.time===time)){$('scheduleMsg').textContent='There is already a change at this time.';return}rows.push({time,temp});$('scheduleMsg').textContent='Saved in this browser preview only.';saveSchedules();lockAdvancedControls()};renderSchedule();
-$('boost').onclick=()=>{$('boost').classList.toggle('on');$('timerStatus').textContent=`Preview only · Boost ${$('boost').classList.contains('on')?'on':'off'} · ${$('boostDuration').value} minutes; no command sent to the valve.`};
+let boostUntil=0,boostTicker=null;
+function updateBoostCountdown(){const remaining=Math.max(0,boostUntil-Date.now()),active=remaining>0;if(boostUntil&&!active){boostUntil=0;if(boostTicker){clearInterval(boostTicker);boostTicker=null}}const total=Math.ceil(remaining/1000),hours=Math.floor(total/3600),minutes=Math.floor(total%3600/60),seconds=total%60,countdown=hours?`${hours}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`:`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;$('boost').classList.toggle('on',active);$('boost').setAttribute('aria-pressed',String(active));$('homeBoost').classList.toggle('active',active);$('homeBoost').setAttribute('aria-pressed',String(active));$('boostCountdown').textContent=active?countdown:'Ready';$('homeBoost').textContent=active?`Stop boost · ${countdown}`:`Start boost · ${$('boostDuration').value} min`;$('timerStatus').textContent=active?`Preview only · Boost countdown ${countdown} remaining; no command sent to the valve.`:'Preview only · no command sent to the valve.'}
+function toggleBoost(){if(boostUntil>Date.now()){boostUntil=0;if(boostTicker){clearInterval(boostTicker);boostTicker=null}}else{boostUntil=Date.now()+Math.max(1,Number($('boostDuration').value)||30)*60000;if(!boostTicker)boostTicker=setInterval(updateBoostCountdown,1000)}updateBoostCountdown()}
+$('boost').onclick=toggleBoost;$('homeBoost').onclick=toggleBoost;$('boostDuration').onchange=updateBoostCountdown;
 for(let t=5;t<=30;t+=0.5){const o=document.createElement('option');o.value=t;o.textContent=t.toFixed(1)+' °C';if(t===21)o.selected=true;$('timerTemp').append(o)}
 $('startTimer').onclick=()=>{$('timerStatus').textContent=`Preview only · ${$('timerTemp').value} °C for ${$('timerDuration').selectedOptions[0].text}; no command sent to the valve.`};
 document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>{b.classList.toggle('on');b.setAttribute('aria-pressed',String(b.classList.contains('on')))});
@@ -282,7 +298,7 @@ dw.addEventListener('pointermove',e=>{if(drag)fromEvt(e)});
 dw.addEventListener('pointerup',()=>drag=false);
 $('m').onclick=()=>setT(S.t-0.5);$('p').onclick=()=>setT(S.t+0.5);
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{if(S.local&&!S.hvacModes.includes(b.dataset.m))return;S.mode=b.dataset.m;paint();if(S.connected)sendControl({mode:S.mode})});
-document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint();if(b.dataset.k==='smart')updatePidControls()}});
+document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{if(b.id==='boost'){toggleBoost();return}S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint();if(b.dataset.k==='smart')updatePidControls()}});
 const bind=(id,out,f)=>$(id).oninput=e=>{$(out).textContent=f(+e.target.value)};
 bind('fr','frv',v=>v.toFixed(1)+' °C');bind('ex','exv',v=>v.toFixed(1)+' °C');
 bind('ca','cav',v=>(v>0?'+':'')+v.toFixed(1)+' °C');bind('ac','acv',v=>v.toFixed(1).replace('-','−')+' °C');
