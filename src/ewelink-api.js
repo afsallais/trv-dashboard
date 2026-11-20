@@ -241,6 +241,9 @@ export async function onRequest({ request, env }) {
       let input;
       try { input = JSON.parse(raw); } catch { return json({ error: 'Send a JSON action.' }, 400); }
       if (!['home', 'away'].includes(input?.action)) return json({ error: 'Action must be home or away.' }, 400);
+      if (!env.EWELINK_KV) return json({ error: 'Location event storage is not configured.' }, 503);
+      const event = { action: input.action, received_at: new Date().toISOString() };
+      await env.EWELINK_KV.put('location_automation:last', JSON.stringify(event), { expirationTtl: 60 * 60 * 24 * 30 });
       const missing = ['EWELINK_APP_ID', 'EWELINK_APP_SECRET', 'EWELINK_ACCOUNT', 'EWELINK_PASSWORD', 'EWELINK_KV', 'EWELINK_TRV_DEVICE_ID', 'EWELINK_CONTROL_FIELDS'].filter(key => !env[key]);
       if (missing.length) return json({ error: `Location control setup is incomplete: ${missing.join(', ')}.` }, 503);
       const target = Number(input.action === 'home' ? env.LOCATION_HOME_TEMPERATURE : env.LOCATION_AWAY_TEMPERATURE);
@@ -257,6 +260,13 @@ export async function onRequest({ request, env }) {
       const value = typeof field === 'object' && field.scale ? target * Number(field.scale) : target;
       await apiWithAuth(env, '/v2/device/thing/status', { method: 'POST', body: { type: 1, id: env.EWELINK_TRV_DEVICE_ID, params: { [key]: value } } });
       return json({ ok: true, action: input.action, target_temperature: target });
+    }
+    if (route === '/api/location/status' && request.method === 'GET') {
+      if (!await verifySession(request, env)) return json({ error: 'Sign in to the private dashboard first.' }, 401);
+      if (!env.EWELINK_KV) return json({ error: 'Location event storage is not configured.' }, 503);
+      let event = null;
+      try { event = JSON.parse(await env.EWELINK_KV.get('location_automation:last') || 'null'); } catch {}
+      return json({ event });
     }
     if (route === '/api/session' && request.method === 'POST') {
       if (!env.DASHBOARD_PASSWORD || !env.EWELINK_KV) return json({ error: 'Cloudflare setup is incomplete: DASHBOARD_PASSWORD and the EWELINK_KV binding are required.' }, 503);

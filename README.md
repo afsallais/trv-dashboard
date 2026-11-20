@@ -41,7 +41,7 @@ This project does not use Firebase or Firestore. Keep any Firestore database rul
 
 ## iPhone location automation through the dashboard
 
-The iPhone can call the Worker directly. `POST /api/location` accepts only `{ "action": "home" }` or `{ "action": "away" }`; the Worker maps these to two preset temperatures and sends the command through the same eWeLink API connection as the dashboard. It does not accept a device ID or arbitrary temperature from the phone.
+The iPhone can call the Worker directly. `POST /api/location` accepts only `{ "action": "home" }` or `{ "action": "away" }`; the Worker maps these to two preset temperatures and sends the command through the same eWeLink API connection as the dashboard. It does not accept a device ID or arbitrary temperature from the phone. The dashboard's Settings page shows the most recent authenticated request; `GET /api/location/status` requires a signed-in dashboard session and reads the event from KV.
 
 Configure these Cloudflare Worker values:
 
