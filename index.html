@@ -4,23 +4,23 @@
 <script>try{const savedTheme=localStorage.getItem('trvTheme');if(savedTheme==='light'||savedTheme==='dark')document.documentElement.dataset.theme=savedTheme}catch{}</script>
 <title>TRV-ZBT · Valve Console</title>
 <style>
-:root{--bg:#efe9df;--panel:#f8f4ec;--ink:#2a2420;--mute:#8a7f72;--line:#d9d0c1;--heat:#e8590c;--cool:#2f7f9e;--ok:#3d8b5a;--shadow:0 1px 0 #fff8 inset,0 8px 24px #6b4e2a18;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110e;--panel:#1f1914;--ink:#f1e8da;--mute:#8f8272;--line:#33291f;--heat:#ff7a2f;--cool:#5fb4d4;--ok:#6cc58b;--shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0008;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#15110e;--panel:#1f1914;--ink:#f1e8da;--mute:#8f8272;--line:#33291f;--heat:#ff7a2f;--cool:#5fb4d4;--ok:#6cc58b;--shadow:0 1px 0 #ffffff0a inset,0 8px 24px #0008;color-scheme:dark}
+:root{--bg:#f5f8fc;--page-gradient:radial-gradient(circle at 50% 0%,#fff 0%,#edf2f9 100%);--panel:rgba(255,255,255,.82);--panel-solid:#fff;--panel-nested:rgba(238,244,252,.75);--card-border:rgba(218,228,240,.9);--glass-highlight:inset 0 1px 0 rgba(255,255,255,.95);--ink:#0f172a;--mute:#8596ac;--line:#e2e8f0;--heat:#ff5722;--cool:#06b6d4;--ok:#10b981;--purple:#8b5cf6;--shadow:0 16px 36px -10px rgba(15,23,42,.08),0 2px 6px rgba(15,23,42,.03);color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#07090e;--page-gradient:radial-gradient(circle at 50% 0%,#131722 0%,#07090e 100%);--panel:rgba(18,23,34,.78);--panel-solid:#131722;--panel-nested:rgba(10,14,22,.72);--card-border:rgba(255,255,255,.09);--glass-highlight:inset 0 1px 0 rgba(255,255,255,.14);--ink:#f8fafc;--mute:#748398;--line:#1c2433;--heat:#ff6838;--cool:#22d3ee;--ok:#34d399;--purple:#a78bfa;--shadow:0 20px 44px -10px rgba(0,0,0,.7),0 2px 8px rgba(0,0,0,.4);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#07090e;--page-gradient:radial-gradient(circle at 50% 0%,#131722 0%,#07090e 100%);--panel:rgba(18,23,34,.78);--panel-solid:#131722;--panel-nested:rgba(10,14,22,.72);--card-border:rgba(255,255,255,.09);--glass-highlight:inset 0 1px 0 rgba(255,255,255,.14);--ink:#f8fafc;--mute:#748398;--line:#1c2433;--heat:#ff6838;--cool:#22d3ee;--ok:#34d399;--purple:#a78bfa;--shadow:0 20px 44px -10px rgba(0,0,0,.7),0 2px 8px rgba(0,0,0,.4);color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 *{transition:background-color .28s ease,border-color .28s ease,color .28s ease,box-shadow .28s ease,opacity .28s ease,transform .28s ease}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--page-gradient);background-attachment:fixed;color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100dvh}
 .mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
-main{max-width:460px;min-height:100dvh;margin:0 auto;padding:18px 16px calc(104px + env(safe-area-inset-bottom,0px))}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin:0;color:var(--mute);font-weight:600}
-h1 b{color:var(--ink)}
+main{width:100%;max-width:440px;min-height:100dvh;margin:0 auto;padding:calc(env(safe-area-inset-top,14px) + 8px) 16px calc(112px + env(safe-area-inset-bottom,22px))}
+header.dynamic-island-header{display:flex;justify-content:space-between;align-items:center;background:var(--panel);backdrop-filter:blur(32px) saturate(190%);-webkit-backdrop-filter:blur(32px) saturate(190%);border:1px solid var(--card-border);box-shadow:0 8px 24px rgba(0,0,0,.06),var(--glass-highlight);border-radius:9999px;padding:8px 12px 8px 18px;margin-bottom:14px;position:sticky;top:calc(env(safe-area-inset-top,8px) + 4px);z-index:8}
+.island-info{display:flex;flex-direction:column}.island-sub{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--heat)}.island-title{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:-.02em}.island-controls{display:flex;align-items:center;gap:7px}.capsule-badge{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:var(--ink);background:var(--panel-nested);padding:5px 9px;border-radius:9999px;border:1px solid var(--card-border)}
+.theme-toggle{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--card-border);border-radius:50%;background:var(--panel-solid);color:var(--ink);font-size:16px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.06)}
 .pill{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--mute)}
 .theme-toggle{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--ink);font-size:18px;cursor:pointer;box-shadow:var(--shadow)}
 .theme-toggle:active{transform:scale(.92)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px #3d8b5a30}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow);animation:card-in .42s cubic-bezier(.2,.75,.25,1) both}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(16,185,129,.22)}
+.card{background:var(--panel);backdrop-filter:blur(32px) saturate(190%);-webkit-backdrop-filter:blur(32px) saturate(190%);border:1px solid var(--card-border);border-radius:28px;padding:20px;margin-bottom:16px;box-shadow:var(--shadow),var(--glass-highlight);animation:card-in .42s cubic-bezier(.2,.75,.25,1) both;position:relative;overflow:hidden}
 .lbl{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin:0 0 12px;font-weight:600;display:flex;justify-content:space-between}
 /* dial */
 .dialwrap{position:relative;width:min(100%,320px);margin:0 auto;touch-action:none;user-select:none}
@@ -61,17 +61,17 @@ td{padding:7px 0;border-top:1px dashed var(--line)}td:last-child{text-align:righ
 .scr{display:flex;gap:8px;margin-top:8px}
 .scr .chip{flex:1;padding:8px 0}
 .dot.off{background:var(--mute);box-shadow:0 0 0 3px #8a7f7230}
-.connection{font-size:12px;color:var(--mute);padding:8px 2px 12px;min-height:34px}
+.connection{font-size:11.5px;font-weight:500;color:var(--ink);background:var(--panel-nested);border:1px solid var(--card-border);border-radius:16px;padding:10px 13px;margin-bottom:14px;display:flex;align-items:center;gap:8px;line-height:1.35;min-height:38px}.connection::before{content:"◉";color:var(--cool);font-size:13px;flex:none}
 button:disabled{opacity:.45;cursor:not-allowed}
 body.connected .demo-only,body.local-mode .demo-only{display:none}
 .view[hidden]{display:none!important}
-.dock{position:fixed;z-index:10;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,460px);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line)}
-.dock-inner{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;border-radius:20px;background:var(--bg);padding:5px}
-.dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;border:0;border-radius:15px;background:none;color:var(--mute);font-family:inherit;font-size:10px;font-weight:600;line-height:1.1;cursor:pointer}
+.dock{position:fixed;z-index:10;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,440px);padding:8px 14px calc(10px + env(safe-area-inset-bottom,16px));pointer-events:none}
+.dock-inner{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;border-radius:999px;background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(36px) saturate(200%);-webkit-backdrop-filter:blur(36px) saturate(200%);padding:6px;border:1px solid var(--card-border);box-shadow:0 24px 50px -10px rgba(15,23,42,.16),var(--glass-highlight);pointer-events:auto}
+.dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:48px;border:0;border-radius:999px;background:none;color:var(--mute);font-family:inherit;font-size:10px;font-weight:600;line-height:1.1;cursor:pointer}
 .dock button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
 .dock .ico{font-size:19px;line-height:1}
 .tk{transition:stroke .3s ease}
-.view:not([hidden]){animation:view-in .32s ease both}
+.view:not([hidden]){animation:view-in .35s cubic-bezier(.32,.72,0,1) both}
 .stat,.chip,.dock button{transition:transform .18s ease,background-color .25s ease,color .25s ease,border-color .25s ease,box-shadow .25s ease}
 @media(hover:hover){.card:hover{box-shadow:0 2px 0 #fff8 inset,0 12px 30px #6b4e2a20}.chip:hover,.dock button:hover{transform:translateY(-1px)}.step button:hover{transform:scale(1.06)}}
 .chip:active,.dock button:active,.step button:active{transform:scale(.96)}
@@ -87,15 +87,33 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 .schedule-item button{border:0;background:none;color:var(--heat);font-size:18px}
 .wide{width:100%;margin-top:10px}
 .weather-temp{font-size:32px;font-weight:400;letter-spacing:-.04em}
-.chart-wrap{position:relative;width:100%;height:230px;margin-top:12px;padding:12px;border-radius:16px;background:var(--bg);border:1px solid var(--line);min-width:0}
+.chart-wrap{position:relative;width:100%;height:230px;margin-top:0;padding:10px 8px 6px;border-radius:16px;background:var(--bg);border:1px solid var(--line);min-width:0}
+.graph-card{padding:18px}
+.graph-header{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px}
+.graph-title{font-size:14px;font-weight:700;letter-spacing:.01em;color:var(--ink)}
+.graph-range-pill{display:flex;flex:none;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;background:var(--bg)}
+.graph-range-pill button{border:0;border-radius:999px;padding:6px 9px;background:transparent;color:var(--mute);font:600 10px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;cursor:pointer}
+.graph-range-pill button.a{background:var(--panel);color:var(--ink);box-shadow:0 2px 6px #0002}
+.graph-kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:12px 0}
+.graph-kpi-item{min-width:0;padding:9px 5px;text-align:center;border:1px solid var(--line);border-radius:13px;background:var(--bg)}
+.graph-kpi-item small{display:block;color:var(--mute);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.graph-kpi-item b{display:block;margin-top:3px;color:var(--ink);font-size:13px;font-weight:700}
+.graph-metric-toggles{display:flex;gap:6px;overflow-x:auto;padding-bottom:3px;margin-bottom:10px;scrollbar-width:none}
+.graph-metric-toggles::-webkit-scrollbar{display:none}
+.metric-toggle-pill{display:inline-flex;flex:none;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:600 10px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;white-space:nowrap;cursor:pointer}
+.metric-toggle-pill:not(.a){opacity:.45}
+.dot-metric{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot-metric.room{background:var(--cool)}.dot-metric.target{background:var(--heat)}.dot-metric.heat{background:#958879}
+.graph-foot{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-top:9px}
+.graph-foot .d{margin:0;font-size:10px;color:var(--mute)}
 .boost-primary{width:100%;min-height:48px;border:0;border-radius:15px;background:linear-gradient(135deg,#ff6a3d,#e84a26);color:#fff;font:inherit;font-weight:700;box-shadow:0 8px 18px #e8590c30;cursor:pointer}
 .boost-primary.active{background:var(--ink);color:var(--bg);box-shadow:var(--shadow)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11px;color:var(--mute)}
 .legend span{display:flex;align-items:center;gap:5px}.key{width:9px;height:9px;border-radius:50%;display:inline-block}.key.target{background:var(--heat)}.key.room{background:var(--cool)}.key.heat{background:var(--mute)}
-@media(min-width:700px){body{background:radial-gradient(ellipse at top,#f8f4ec,var(--bg) 70%)}:root[data-theme="dark"] body{background:var(--bg)}}
+@media(min-width:700px){body{background:var(--page-gradient);background-attachment:fixed}}
 </style></head>
 <body><main>
-<header><h1><b>TRV‑ZBT</b> · Valve console</h1><div class="pill"><span class="dot off" id="dot"></span><span id="batt" class="mono">DEMO</span><button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch to dark mode" aria-pressed="false">☾</button></div></header>
+<header class="dynamic-island-header" role="banner"><div class="island-info"><span class="island-sub" id="mini">Auto</span><span class="island-title">TRV‑ZBT · Radiator</span></div><div class="island-controls"><div class="capsule-badge"><span class="dot off" id="dot"></span><span id="batt" class="mono">DEMO</span></div><button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch to dark mode" aria-pressed="false">☾</button></div></header>
 <div class="connection" id="conn">Demo preview · deploy to Cloudflare Pages to connect through eWeLink.</div>
 
 <section class="card" id="cloudLogin" hidden>
@@ -184,7 +202,27 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
   <div class="notice">ZBBridge-P is listed by SONOFF for these devices. Create and verify sensor-to-TRV linkages in the eWeLink app; the dashboard only displays cloud-reported values.</div>
 </section>
 <section class="card"><p class="lbl">Other Gen 2 features</p><div class="row"><div><p class="t">Energy saving</p><p class="d">The product page describes energy-saving and presence-linkage options. The current dashboard connection does not expose their controls.</p></div></div><div class="row"><div><p class="t">Multiple valves</p><p class="d">Group control needs a device selector and a compatible multi-device backend.</p></div></div><div class="row"><div><p class="t">Firmware updates</p><p class="d">Use eWeLink or a compatible Zigbee OTA service. Updates are not available in this dashboard.</p></div></div></section>
-<section class="card"><p class="lbl">Heating history</p><p class="d">Target temperature, room temperature, and heating activity. The TRV stores up to six months of history.</p><select id="historyRange" aria-label="History period"><option value="day">Day</option><option value="month">Month</option><option value="half_year">Six months</option></select><div class="chart-wrap"><canvas id="historyChart" role="img" aria-label="Temperature and heating activity history chart"></canvas></div><div class="legend"><span><i class="key target"></i>Target °C</span><span><i class="key room"></i>Room °C</span><span><i class="key heat"></i>Heating %</span></div><p class="d" id="historyHint" aria-live="polite"></p></section>
+<section class="card graph-card">
+  <div class="graph-header">
+    <div><div class="graph-title">Thermal dynamics</div><p class="d" style="margin:3px 0 0;font-size:11px;color:var(--mute)">Target, room temperature and heating activity</p></div>
+    <div class="graph-range-pill" id="graphRangePills" aria-label="Graph period">
+      <button type="button" class="a" data-range="day">24h</button><button type="button" data-range="month">30d</button><button type="button" data-range="half_year">6m</button>
+    </div>
+  </div>
+  <div class="graph-kpi-grid" aria-label="Preview summary">
+    <div class="graph-kpi-item"><small>Room avg</small><b class="mono" id="kpiAvg">—</b></div>
+    <div class="graph-kpi-item"><small>Peak target</small><b class="mono" id="kpiPeak">—</b></div>
+    <div class="graph-kpi-item"><small>Avg heating</small><b class="mono" id="kpiDuty">—</b></div>
+  </div>
+  <div class="graph-metric-toggles" aria-label="Show or hide graph series">
+    <button type="button" class="metric-toggle-pill a" data-ds="2"><i class="dot-metric room"></i>Room °C</button>
+    <button type="button" class="metric-toggle-pill a" data-ds="1"><i class="dot-metric target"></i>Target °C</button>
+    <button type="button" class="metric-toggle-pill a" data-ds="0"><i class="dot-metric heat"></i>Heating %</button>
+  </div>
+  <div class="chart-wrap"><canvas id="historyChart" role="img" aria-label="Target temperature, room temperature and heating activity graph"></canvas></div>
+  <div class="graph-foot"><p class="d" id="graphTimeNotice">—</p><p class="d" id="historyHint" aria-live="polite"></p></div>
+  <select id="historyRange" aria-label="History period" hidden><option value="day">Day</option><option value="month">Month</option><option value="half_year">Six months</option></select>
+</section>
 </div>
 
 <div class="view" data-view="settings" hidden>
@@ -259,11 +297,11 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 <p class="foot" id="foot">Simulated preview · use Cloudflare Pages for cloud device connection</p>
 </main>
 <nav class="dock" aria-label="Main navigation"><div class="dock-inner" role="tablist">
-<button type="button" role="tab" aria-selected="true" data-tab="home"><span class="ico">⌂</span>Room</button>
-<button type="button" role="tab" aria-selected="false" data-tab="schedule"><span class="ico">▦</span>Schedule</button>
-<button type="button" role="tab" aria-selected="false" data-tab="features"><span class="ico">☼</span>More</button>
-<button type="button" role="tab" aria-selected="false" data-tab="sensors"><span class="ico">◉</span>Sensors</button>
-<button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico">⚙</span>Settings</button>
+<button type="button" role="tab" aria-selected="true" data-tab="home"><span class="ico">⌂</span><span>Room</span></button>
+<button type="button" role="tab" aria-selected="false" data-tab="sensors"><span class="ico">◉</span><span>Devices</span></button>
+<button type="button" role="tab" aria-selected="false" data-tab="schedule"><span class="ico">▦</span><span>Schedule</span></button>
+<button type="button" role="tab" aria-selected="false" data-tab="features"><span class="ico">☼</span><span>Automations</span></button>
+<button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico">⚙</span><span>Settings</span></button>
 </div></nav>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
@@ -285,7 +323,27 @@ function lockAdvancedControls(){const advanced=document.querySelectorAll('#plan,
 function updatePidControls(){const smart=document.querySelector('[data-k="smart"]')?.classList.contains('on');$('ac').disabled=Boolean(smart)||S.local||S.connected;$('heatPosition').disabled=Boolean(smart)||S.local||S.connected;$('idlePosition').disabled=Boolean(smart)||S.local||S.connected}
 const historySamples={day:{labels:['00','03','06','09','12','15','18','21'],target:[17,17,18,20,20,20,19,18],room:[16.8,16.7,17.2,18.4,19.1,19.6,19.1,18.4],heat:[12,26,58,74,42,24,38,46]},month:{labels:['1','5','9','13','17','21','25','30'],target:[18,18,19,20,20,19,18,18],room:[17.4,17.8,18.1,19.2,19.5,18.7,18.2,17.9],heat:[44,38,58,70,35,48,40,52]},half_year:{labels:['Jun','Jul','Aug','Sep','Oct','Nov'],target:[19,19,18,19,20,20],room:[18.1,19.4,18.3,18.2,19.1,18.7],heat:[62,8,4,42,68,54]}};
 let historyChartInstance;
-function renderHistory(){const canvas=$('historyChart');if(!canvas)return;if(!window.Chart){$('historyHint').textContent='Chart library unavailable. Check your internet connection and reload.';return}const live=S.local||S.connected,range=$('historyRange').value,data=historySamples[range]||historySamples.day,ink=getComputedStyle(document.documentElement).getPropertyValue('--mute').trim(),grid=getComputedStyle(document.documentElement).getPropertyValue('--line').trim(),heat=getComputedStyle(document.documentElement).getPropertyValue('--heat').trim(),cool=getComputedStyle(document.documentElement).getPropertyValue('--cool').trim();$('historyHint').textContent=live?'Live climate values are connected; historical samples are not exposed by this connector.':'Illustrative preview data only · no device history is connected.';if(historyChartInstance)historyChartInstance.destroy();historyChartInstance=new Chart(canvas,{type:'bar',data:{labels:live?[]:data.labels,datasets:[{type:'bar',label:'Heating',data:live?[]:data.heat,yAxisID:'heating',backgroundColor:'rgba(130,120,108,.28)',borderRadius:5,barPercentage:.55,order:3},{type:'line',label:'Target °C',data:live?[]:data.target,yAxisID:'temperature',borderColor:heat,backgroundColor:heat,pointRadius:3,pointHoverRadius:5,borderWidth:2.5,tension:.32,order:1},{type:'line',label:'Room °C',data:live?[]:data.room,yAxisID:'temperature',borderColor:cool,backgroundColor:cool,pointRadius:3,pointHoverRadius:5,borderWidth:2.5,tension:.32,order:0}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},animation:{duration:500},plugins:{legend:{display:false},tooltip:{backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--panel').trim(),titleColor:getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(),bodyColor:getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(),borderColor:grid,borderWidth:1,callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}${ctx.dataset.yAxisID==='temperature'?' °C':'%'}`}}},scales:{x:{grid:{display:false},ticks:{color:ink,font:{family:'ui-monospace,monospace',size:11}}},temperature:{type:'linear',position:'left',min:15,max:25,ticks:{stepSize:5,color:ink,callback:value=>`${value}°`},grid:{color:grid}},heating:{type:'linear',position:'right',min:0,max:100,display:false,grid:{drawOnChartArea:false}}}}})}
+function renderHistory(){
+ const canvas=$('historyChart');if(!canvas)return;
+ if(!window.Chart){$('historyHint').textContent='Chart library unavailable. Check your internet connection and reload.';return}
+ const range=$('historyRange').value,data=historySamples[range]||historySamples.day,live=S.connected,preview=!cloudMode&&!S.local&&!live;
+ const root=getComputedStyle(document.documentElement),ink=root.getPropertyValue('--mute').trim(),grid=root.getPropertyValue('--line').trim(),heat=root.getPropertyValue('--heat').trim(),cool=root.getPropertyValue('--cool').trim(),dark=document.documentElement.dataset.theme==='dark'||(!document.documentElement.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);
+ $('historyHint').textContent=live?'Live readings connected · this connector does not expose history.':preview?'Illustrative preview only · no device history is connected.':'Connect the live device to view readings; preview samples are hidden.';
+ $('graphTimeNotice').textContent=range==='day'?'24-hour sample · 3-hour intervals':range==='month'?'30-day sample · selected days':'6-month sample · monthly values';
+ const avg=values=>values.reduce((sum,value)=>sum+value,0)/values.length;
+ $('kpiAvg').textContent=preview?`${avg(data.room).toFixed(1)} °C`:'—';$('kpiPeak').textContent=preview?`${Math.max(...data.target).toFixed(1)} °C`:'—';$('kpiDuty').textContent=preview?`${Math.round(avg(data.heat))}%`:'—';
+ document.querySelectorAll('#graphRangePills button').forEach(button=>{button.classList.toggle('a',button.dataset.range===range);button.disabled=!preview});
+ const ctx=canvas.getContext('2d'),roomFill=ctx.createLinearGradient(0,0,0,220),heatFill=ctx.createLinearGradient(0,0,0,220);
+ roomFill.addColorStop(0,dark?'rgba(34,211,238,.35)':'rgba(6,182,212,.28)');roomFill.addColorStop(.55,dark?'rgba(34,211,238,.09)':'rgba(6,182,212,.07)');roomFill.addColorStop(1,'rgba(6,182,212,0)');
+ heatFill.addColorStop(0,dark?'rgba(167,139,250,.34)':'rgba(139,92,246,.25)');heatFill.addColorStop(1,dark?'rgba(167,139,250,.04)':'rgba(139,92,246,.02)');
+ if(historyChartInstance)historyChartInstance.destroy();
+ historyChartInstance=new Chart(canvas,{type:'line',data:{labels:preview?data.labels:[],datasets:[
+  {type:'bar',label:'Heating activity',data:preview?data.heat:[],yAxisID:'yHeat',backgroundColor:heatFill,hoverBackgroundColor:dark?'rgba(167,139,250,.65)':'rgba(139,92,246,.55)',borderRadius:6,barPercentage:.48,order:3},
+  {type:'line',label:'Target',data:preview?data.target:[],yAxisID:'yTemp',borderColor:heat,borderWidth:2.5,borderDash:[5,4],pointRadius:2.5,pointHoverRadius:6,pointBackgroundColor:heat,pointBorderColor:dark?'#07090e':'#fff',pointBorderWidth:2,tension:.35,fill:false,order:1},
+  {type:'line',label:'Room',data:preview?data.room:[],yAxisID:'yTemp',borderColor:cool,borderWidth:2.8,backgroundColor:roomFill,pointRadius:3,pointHoverRadius:7,pointBackgroundColor:cool,pointBorderColor:dark?'#07090e':'#fff',pointBorderWidth:2,tension:.4,fill:true,order:0}
+ ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},animation:{duration:450},plugins:{legend:{display:false},tooltip:{backgroundColor:dark?'rgba(19,23,34,.96)':'rgba(255,255,255,.96)',titleColor:dark?'#f8fafc':'#0f172a',bodyColor:dark?'#cbd5e1':'#475569',borderColor:grid,borderWidth:1,padding:10,cornerRadius:12,boxPadding:5,usePointStyle:true,callbacks:{label:ctx=>ctx.dataset.yAxisID==='yHeat'?` ${ctx.dataset.label}: ${ctx.parsed.y}%`:` ${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(1)} °C`}}},scales:{x:{grid:{display:false},ticks:{color:ink,font:{family:'ui-monospace,monospace',size:10}}},yTemp:{type:'linear',position:'left',min:15,max:25,ticks:{stepSize:5,color:ink,font:{family:'ui-monospace,monospace',size:10},callback:value=>`${value}°`},grid:{color:grid}},yHeat:{type:'linear',position:'right',min:0,max:100,display:false,grid:{drawOnChartArea:false}}}}});
+ document.querySelectorAll('.metric-toggle-pill').forEach(button=>button.classList.toggle('a',historyChartInstance.isDatasetVisible(Number(button.dataset.ds))));
+}
 $('plan').onchange=()=>{schedulePlan=$('plan').value;try{localStorage.setItem('trvEditedPlan',schedulePlan)}catch{}renderSchedule();lockAdvancedControls()};$('activePlan').onchange=()=>{try{localStorage.setItem('trvActivePlan',$('activePlan').value)}catch{}};
 $('addPeriod').onclick=()=>{const time=$('schTime').value,temp=Number($('schTemp').value),rows=daySchedule();if(rows.length>=12){$('scheduleMsg').textContent='This day already has 12 changes.';return}if(!time||!Number.isFinite(temp)||temp<5||temp>30||temp*2%1){$('scheduleMsg').textContent='Use 5–30 °C in 0.5 °C steps.';return}if(rows.some(r=>r.time===time)){$('scheduleMsg').textContent='There is already a change at this time.';return}rows.push({time,temp});$('scheduleMsg').textContent='Saved in this browser preview only.';saveSchedules();lockAdvancedControls()};renderSchedule();
 let boostUntil=0,boostTicker=null;
@@ -295,7 +353,7 @@ $('boost').onclick=toggleBoost;$('homeBoost').onclick=toggleBoost;$('boostDurati
 for(let t=5;t<=30;t+=0.5){const o=document.createElement('option');o.value=t;o.textContent=t.toFixed(1)+' °C';if(t===21)o.selected=true;$('timerTemp').append(o)}
 $('startTimer').onclick=()=>{$('timerStatus').textContent=`Preview only · ${$('timerTemp').value} °C for ${$('timerDuration').selectedOptions[0].text}; no command sent to the valve.`};
 document.querySelectorAll('[data-feature]').forEach(b=>b.onclick=()=>{b.classList.toggle('on');b.setAttribute('aria-pressed',String(b.classList.contains('on')))});
-$('calibrate').onclick=()=>{$('calStatus').textContent='Preview only · calibration requires a compatible live Zigbee connection. No command was sent.'};$('historyRange').onchange=renderHistory;renderHistory();lockAdvancedControls();
+$('calibrate').onclick=()=>{$('calStatus').textContent='Preview only · calibration requires a compatible live Zigbee connection. No command was sent.'};$('historyRange').onchange=renderHistory;document.querySelectorAll('#graphRangePills button').forEach(button=>button.onclick=()=>{if(button.disabled)return;$('historyRange').value=button.dataset.range;renderHistory()});document.querySelectorAll('.metric-toggle-pill').forEach(button=>button.onclick=()=>{if(!historyChartInstance)return;const index=Number(button.dataset.ds),visible=historyChartInstance.isDatasetVisible(index);historyChartInstance.setDatasetVisibility(index,!visible);historyChartInstance.update();button.classList.toggle('a',!visible)});renderHistory();lockAdvancedControls();
 const pt=(a,r)=>{const x=(a-90)*Math.PI/180;return[150+r*Math.cos(x),150+r*Math.sin(x)]};
 const ang=t=>A0+(t-MIN)/(MAX-MIN)*SW;
 let h='<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1"/>';
