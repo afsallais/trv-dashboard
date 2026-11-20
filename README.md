@@ -56,6 +56,10 @@ The dashboard must already have valid eWeLink API credentials and a verified wri
 
 On iPhone Shortcuts, create one **Leave** and one **Arrive** personal automation. Add **Get Contents of URL** using `https://YOUR-WORKER-URL/api/location`, method **POST**, header `Authorization: Bearer YOUR_TOKEN`, and JSON request body `{ "action": "away" }` for Leave or `{ "action": "home" }` for Arrive. Test both calls manually first and confirm the target changes in eWeLink. The ZBBridge-P must be powered and online. See [Apple's travel-trigger guide](https://support.apple.com/guide/shortcuts/travel-triggers-apd8ebfc4e8e/ios).
 
+## Quick temperature presets
+
+The Room screen includes Away (Off mode with a 15 °C setpoint), Sleep (17.5 °C), Eco (19.5 °C), and Comfort (21 °C). Sleep, Eco, and Comfort request Manual/Heat mode with the preset temperature. In live mode, a preset is enabled only when both temperature and mode fields are configured and verified for the device. Preview mode updates the simulated UI only.
+
 ## Verify the device-specific commands after pairing
 
 The eWeLink API exposes a device's status `params` and accepts a `params` object for control, but its generic endpoint documentation does not define the writable TRV-ZBT Gen 2 field names or accepted values. The hardware has not arrived/been paired yet, so those commands cannot be validated here.

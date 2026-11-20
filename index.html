@@ -106,6 +106,12 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 .dot-metric.room{background:var(--cool)}.dot-metric.target{background:var(--heat)}.dot-metric.heat{background:#958879}
 .graph-foot{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-top:9px}
 .graph-foot .d{margin:0;font-size:10px;color:var(--mute)}
+.preset-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:13px 0 10px}
+.preset-card{display:flex;min-width:0;min-height:104px;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:9px 3px;border:1px solid var(--card-border);border-radius:20px;background:var(--panel-nested);color:var(--ink);font:inherit;cursor:pointer;transition:transform .2s ease,border-color .2s ease,background-color .2s ease,box-shadow .2s ease}
+.preset-card .preset-icon{font-size:22px;line-height:1.1}.preset-card .preset-name{font-size:11px;font-weight:700;color:var(--ink-secondary, var(--mute))}.preset-card .preset-temp{font-size:14px;font-weight:750;color:var(--ink)}
+.preset-card.active{border-color:var(--heat);background:color-mix(in srgb,var(--heat) 8%,var(--panel));box-shadow:0 0 18px color-mix(in srgb,var(--heat) 20%,transparent)}
+.preset-card.active .preset-name,.preset-card.active .preset-temp{color:var(--heat)}
+.preset-status{min-height:16px;margin:0;font-size:10.5px;color:var(--mute)}
 .boost-primary{width:100%;min-height:48px;border:0;border-radius:15px;background:linear-gradient(135deg,#ff6a3d,#e84a26);color:#fff;font:inherit;font-weight:700;box-shadow:0 8px 18px #e8590c30;cursor:pointer}
 .boost-primary.active{background:var(--ink);color:var(--bg);box-shadow:var(--shadow)}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11px;color:var(--mute)}
@@ -135,6 +141,21 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
   </div>
   <div class="step"><button id="m">−</button><button id="p">+</button></div>
   <div style="height:14px"></div>
+  <div class="preset-grid" aria-label="Quick temperature presets">
+    <button type="button" class="preset-card" data-preset="away" aria-label="Away preset: valve off, 15 degrees">
+      <span class="preset-icon" aria-hidden="true">✈️</span><span class="preset-name">Away</span><span class="preset-temp mono">15.0°</span>
+    </button>
+    <button type="button" class="preset-card" data-preset="sleep" aria-label="Sleep preset: 17.5 degrees">
+      <span class="preset-icon" aria-hidden="true">🌙</span><span class="preset-name">Sleep</span><span class="preset-temp mono">17.5°</span>
+    </button>
+    <button type="button" class="preset-card" data-preset="eco" aria-label="Eco preset: 19.5 degrees">
+      <span class="preset-icon" aria-hidden="true">🍃</span><span class="preset-name">Eco</span><span class="preset-temp mono">19.5°</span>
+    </button>
+    <button type="button" class="preset-card" data-preset="comfort" aria-label="Comfort preset: 21 degrees">
+      <span class="preset-icon" aria-hidden="true">☀️</span><span class="preset-name">Comfort</span><span class="preset-temp mono">21.0°</span>
+    </button>
+  </div>
+  <p class="preset-status" id="presetStatus" aria-live="polite">Preview only · presets won’t be sent to the valve.</p>
   <div class="seg" id="mode"><button data-m="off">Off</button><button data-m="auto">Auto</button><button data-m="heat">Manual</button></div>
 </section>
 
@@ -361,6 +382,10 @@ for(let t=MIN;t<=MAX;t+=0.5){const a=ang(t),big=t%5===0,mid=Number.isInteger(t);
 for(let t=5;t<=30;t+=5){const[x,y]=pt(ang(t),104);h+=`<text x="${x}" y="${y+3}" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${t}</text>`}
 h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3" style="transition:cx .16s ease,cy .16s ease"/>';
 svg.innerHTML=h;
+const quickPresets={away:{label:'Away',mode:'off',temperature:15},sleep:{label:'Sleep',mode:'heat',temperature:17.5},eco:{label:'Eco',mode:'heat',temperature:19.5},comfort:{label:'Comfort',mode:'heat',temperature:21}};
+function presetAvailable(preset){if(!S.local)return true;if(!S.connected)return false;if(cloudMode)return S.cloudControls.includes('temperature')&&S.cloudControls.includes('mode')&&S.hvacModes.includes(preset.mode);return S.hvacModes.includes(preset.mode)}
+function syncPresetCards(){const active=S.mode==='off'?'away':S.mode==='heat'?Object.keys(quickPresets).find(key=>key!=='away'&&Math.abs(S.t-quickPresets[key].temperature)<.01):null;document.querySelectorAll('.preset-card').forEach(button=>{const key=button.dataset.preset;button.classList.toggle('active',key===active);button.setAttribute('aria-pressed',String(key===active));button.disabled=!presetAvailable(quickPresets[key])});$('presetStatus').textContent=S.local&&!S.connected?'Connect to the live TRV before using presets.':S.connected?'Presets send commands to the connected TRV.':'Preview only · presets won’t be sent to the valve.'}
+function applyPreset(key){const preset=quickPresets[key];if(!preset)return;if(!presetAvailable(preset)){setConnection('This preset needs verified live temperature and mode controls.',false);return}S.t=preset.temperature;S.mode=preset.mode;paint();if(S.connected)sendControl({temperature:preset.temperature,mode:preset.mode});else setConnection(`Preview only · ${preset.label} would set ${preset.mode==='off'?'Off':'Manual'} at ${preset.temperature.toFixed(1)} °C; no command sent.`,false)}
 function paint(){
  const a=ang(S.t);
  document.querySelectorAll('.tk').forEach(l=>{const t=+l.dataset.t;l.setAttribute('stroke',t<=S.t?(S.mode==='off'?'var(--mute)':'var(--heat)'):'var(--line)')});
@@ -377,6 +402,7 @@ function paint(){
  document.querySelectorAll('#mode button').forEach(b=>{b.classList.toggle('a',b.dataset.m===S.mode);b.disabled=S.local&&(!S.connected||!S.hvacModes.includes(b.dataset.m))});
  $('m').disabled=$('p').disabled=S.local&&(!S.connected||cloudMode&&!S.cloudControls.includes('temperature'));
  $('mini').textContent=(S.mode==='heat'?'MANUAL':S.mode.toUpperCase())+(S.child?' · LOCKED':'');
+ syncPresetCards();
 }
 let commandTimer;
 function setT(t,auto){if(S.child&&!auto)return;if(S.local&&(!S.connected||cloudMode&&!S.cloudControls.includes('temperature')))return;if(!auto&&S.track){S.track=false;syncTrack()}S.t=Math.round(Math.min(MAX,Math.max(MIN,t))*2)/2;paint();if(S.connected){clearTimeout(commandTimer);commandTimer=setTimeout(()=>sendControl({temperature:S.t}),450)}}
@@ -387,6 +413,7 @@ dw.addEventListener('pointermove',e=>{if(drag)fromEvt(e)});
 dw.addEventListener('pointerup',()=>drag=false);
 $('m').onclick=()=>setT(S.t-0.5);$('p').onclick=()=>setT(S.t+0.5);
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{if(S.local&&!S.hvacModes.includes(b.dataset.m))return;S.mode=b.dataset.m;paint();if(S.connected)sendControl({mode:S.mode})});
+document.querySelectorAll('.preset-card').forEach(button=>button.onclick=()=>applyPreset(button.dataset.preset));
 document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{if(b.id==='boost'){toggleBoost();return}S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint();if(b.dataset.k==='smart')updatePidControls()}});
 const bind=(id,out,f)=>$(id).oninput=e=>{$(out).textContent=f(+e.target.value)};
 bind('fr','frv',v=>v.toFixed(1)+' °C');bind('ex','exv',v=>v.toFixed(1)+' °C');
