@@ -189,6 +189,18 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 
 <div class="view" data-view="settings" hidden>
 <section class="card">
+  <p class="lbl"><span>iPhone location automation</span><span>via dashboard</span></p>
+  <p class="d">Your iPhone can call one protected Cloudflare Worker URL when you arrive or leave. The Worker sends a preset temperature command directly through the dashboard’s eWeLink connection; the Shortcut cannot choose another device or temperature.</p>
+  <ol class="d" style="padding-left:22px;line-height:1.65">
+    <li>First configure a verified writable temperature field for this TRV in <code>EWELINK_CONTROL_FIELDS</code>. The API must already be authorized and working for the dashboard.</li>
+    <li>In Cloudflare Worker settings, set <code>EWELINK_TRV_DEVICE_ID</code>, <code>LOCATION_HOME_TEMPERATURE</code>, and <code>LOCATION_AWAY_TEMPERATURE</code>. Add <code>LOCATION_AUTOMATION_TOKEN</code> as a private random token of at least 32 characters.</li>
+    <li>On iPhone, create Shortcuts <b>Leave</b> and <b>Arrive</b> automations. Each uses <b>Get Contents of URL</b> with method POST to <code>https://YOUR-WORKER-URL/api/location</code>, header <code>Authorization: Bearer YOUR-TOKEN</code>, and JSON body <code>{"action":"away"}</code> or <code>{"action":"home"}</code>.</li>
+    <li>Test each request from Shortcuts, then verify the TRV target in eWeLink. Keep the token private; it can change the TRV target.</li>
+  </ol>
+  <p class="notice">This direct route still requires approved eWeLink API credentials and a verified TRV command field; it does not bypass the current APPID issue. Choose an away temperature that suits your home and frost-protection needs. Keep the ZBBridge-P powered and online.</p>
+  <p class="d"><a href="https://support.apple.com/guide/shortcuts/travel-triggers-apd8ebfc4e8e/ios" target="_blank" rel="noopener">Apple: Arrive and Leave triggers</a></p>
+</section>
+<section class="card">
   <p class="lbl">Safeguards</p>
   <div class="row"><div><p class="t">Child lock</p><p class="d">Disables the knob and buttons on the valve</p></div><button class="sw" data-k="child"></button></div>
   <div class="row"><div><p class="t">Open‑window detection</p><p class="d">Shuts the valve if temperature drops over 1.5 °C in 5 min</p></div><button class="sw on" data-k="ow"></button></div>

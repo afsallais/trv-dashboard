@@ -230,6 +230,34 @@ export async function onRequest({ request, env }) {
   try {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Allow': 'GET,POST,OPTIONS', 'Cache-Control': 'no-store' } });
     if (!sameOrigin(request)) return json({ error: 'Cross-origin requests are not allowed.' }, 403);
+    if (route === '/api/location' && request.method === 'POST') {
+      const token = env.LOCATION_AUTOMATION_TOKEN;
+      if (!token || token.length < 32) return json({ error: 'Location automation is not configured.' }, 503);
+      const authorization = request.headers.get('Authorization') || '';
+      const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+      if (!constantTimeEqual(supplied, token)) return json({ error: 'Unauthorized.' }, 401);
+      const raw = await request.text();
+      if (raw.length > 256) return json({ error: 'Request is too large.' }, 413);
+      let input;
+      try { input = JSON.parse(raw); } catch { return json({ error: 'Send a JSON action.' }, 400); }
+      if (!['home', 'away'].includes(input?.action)) return json({ error: 'Action must be home or away.' }, 400);
+      const missing = ['EWELINK_APP_ID', 'EWELINK_APP_SECRET', 'EWELINK_ACCOUNT', 'EWELINK_PASSWORD', 'EWELINK_KV', 'EWELINK_TRV_DEVICE_ID', 'EWELINK_CONTROL_FIELDS'].filter(key => !env[key]);
+      if (missing.length) return json({ error: `Location control setup is incomplete: ${missing.join(', ')}.` }, 503);
+      const target = Number(input.action === 'home' ? env.LOCATION_HOME_TEMPERATURE : env.LOCATION_AWAY_TEMPERATURE);
+      if (!Number.isFinite(target) || target < 5 || target > 30 || Math.abs(target * 2 - Math.round(target * 2)) > 1e-8) return json({ error: `Set a valid ${input.action} temperature (5–30 °C in 0.5 °C steps) in Worker variables.` }, 503);
+      const list = await apiWithAuth(env, '/v2/device/thing?lang=en&num=0');
+      const entry = (list.thingList || []).find(item => [1, 2].includes(item.itemType) && (item.itemData?.deviceid || item.itemData?.id) === env.EWELINK_TRV_DEVICE_ID);
+      if (!entry) return json({ error: 'Configured TRV device was not found in this eWeLink account.' }, 404);
+      const device = normalizeDevice(entry, entry.itemData?.params || {});
+      if (device.kind !== 'valve') return json({ error: 'Configured device is not recognized as a TRV.' }, 409);
+      const profile = configuredProfile(env, device);
+      const field = profile.temperature;
+      const key = typeof field === 'string' ? field : field?.key;
+      if (!key) return json({ error: `TRV temperature field has not been verified for ${device.model}.` }, 409);
+      const value = typeof field === 'object' && field.scale ? target * Number(field.scale) : target;
+      await apiWithAuth(env, '/v2/device/thing/status', { method: 'POST', body: { type: 1, id: env.EWELINK_TRV_DEVICE_ID, params: { [key]: value } } });
+      return json({ ok: true, action: input.action, target_temperature: target });
+    }
     if (route === '/api/session' && request.method === 'POST') {
       if (!env.DASHBOARD_PASSWORD || !env.EWELINK_KV) return json({ error: 'Cloudflare setup is incomplete: DASHBOARD_PASSWORD and the EWELINK_KV binding are required.' }, 503);
       const ip = request.headers.get('CF-Connecting-IP') || 'unknown';

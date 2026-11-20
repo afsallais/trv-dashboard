@@ -39,6 +39,23 @@ The official API requires an assigned APPID/APPSECRET, account authorization for
 
 This project does not use Firebase or Firestore. Keep any Firestore database rules denied unless another application you own needs that database; this dashboard's storage is Cloudflare KV.
 
+## iPhone location automation through the dashboard
+
+The iPhone can call the Worker directly. `POST /api/location` accepts only `{ "action": "home" }` or `{ "action": "away" }`; the Worker maps these to two preset temperatures and sends the command through the same eWeLink API connection as the dashboard. It does not accept a device ID or arbitrary temperature from the phone.
+
+Configure these Cloudflare Worker values:
+
+| Name | Type | Purpose |
+| --- | --- | --- |
+| `LOCATION_AUTOMATION_TOKEN` | Secret | Random private token, at least 32 characters; Shortcuts sends it as a Bearer authorization header. |
+| `EWELINK_TRV_DEVICE_ID` | Variable/secret | Device ID of the paired TRV in your eWeLink account. |
+| `LOCATION_HOME_TEMPERATURE` | Variable | Home setpoint in °C, 5–30 in 0.5 °C steps. |
+| `LOCATION_AWAY_TEMPERATURE` | Variable | Away setpoint in °C, 5–30 in 0.5 °C steps. |
+
+The dashboard must already have valid eWeLink API credentials and a verified writable temperature mapping in `EWELINK_CONTROL_FIELDS`. This endpoint does not bypass the developer APPID requirement or guess the TRV's protocol fields. Set an away value that suits your home and frost-protection needs. Keep the token private; anyone with it can switch between the two preset temperatures.
+
+On iPhone Shortcuts, create one **Leave** and one **Arrive** personal automation. Add **Get Contents of URL** using `https://YOUR-WORKER-URL/api/location`, method **POST**, header `Authorization: Bearer YOUR_TOKEN`, and JSON request body `{ "action": "away" }` for Leave or `{ "action": "home" }` for Arrive. Test both calls manually first and confirm the target changes in eWeLink. The ZBBridge-P must be powered and online. See [Apple's travel-trigger guide](https://support.apple.com/guide/shortcuts/travel-triggers-apd8ebfc4e8e/ios).
+
 ## Verify the device-specific commands after pairing
 
 The eWeLink API exposes a device's status `params` and accepts a `params` object for control, but its generic endpoint documentation does not define the writable TRV-ZBT Gen 2 field names or accepted values. The hardware has not arrived/been paired yet, so those commands cannot be validated here.
