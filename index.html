@@ -10,7 +10,7 @@ html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Space Grotesk","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
-main{max-width:460px;margin:0 auto;padding:18px 16px 40px}
+main{max-width:460px;min-height:100dvh;margin:0 auto;padding:18px 16px calc(104px + env(safe-area-inset-bottom,0px))}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 h1{font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin:0;color:var(--mute);font-weight:600}
 h1 b{color:var(--ink)}
@@ -59,11 +59,19 @@ td{padding:7px 0;border-top:1px dashed var(--line)}td:last-child{text-align:righ
 .connection{font-size:12px;color:var(--mute);padding:8px 2px 12px;min-height:34px}
 button:disabled{opacity:.45;cursor:not-allowed}
 body.connected .demo-only,body.local-mode .demo-only{display:none}
+.view[hidden]{display:none!important}
+.dock{position:fixed;z-index:10;bottom:0;left:50%;transform:translateX(-50%);width:min(100%,460px);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(18px);border-top:1px solid var(--line)}
+.dock-inner{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;border-radius:20px;background:var(--bg);padding:5px}
+.dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;border:0;border-radius:15px;background:none;color:var(--mute);font-family:inherit;font-size:10px;font-weight:600;line-height:1.1;cursor:pointer}
+.dock button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.dock .ico{font-size:19px;line-height:1}
+@media(min-width:700px){body{background:radial-gradient(ellipse at top,#f8f4ec,var(--bg) 70%)}:root[data-theme="dark"] body{background:var(--bg)}}
 </style></head>
 <body><main>
 <header><h1><b>TRV‑ZBT</b> · Valve console</h1><div class="pill"><span class="dot off" id="dot"></span><span id="batt" class="mono">DEMO</span></div></header>
 <div class="connection" id="conn">Demo preview · hardware control runs from the local Home Assistant connector.</div>
 
+<div class="view" data-view="home">
 <section class="card">
   <p class="lbl"><span>Target</span><span class="mono" id="mini"></span></p>
   <div class="dialwrap" id="dial">
@@ -85,7 +93,9 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
     <div class="stat"><small>Fault</small><b class="fault mono" id="fc">0</b><div class="sub" style="margin:4px 0 0">none</div></div>
   </div>
 </section>
+</div>
 
+<div class="view" data-view="climate" hidden>
 <section class="card demo-only">
   <p class="lbl"><span>Outside tracking</span><span class="mono" id="trk">off</span></p>
   <div class="row" style="padding-top:0"><div><p class="t">Follow outside temperature</p><p class="d">Target = outside + offset, updated automatically</p></div><button class="sw" id="tsw"></button></div>
@@ -97,14 +107,18 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
   <input type="range" id="ot" min="-20" max="35" step="0.5" value="2">
   <p class="d" id="tnote" style="margin:10px 0 0;font-size:12.5px;color:var(--mute)"></p>
 </section>
+</div>
 
+<div class="view" data-view="settings" hidden>
 <section class="card demo-only">
   <p class="lbl">Safeguards</p>
   <div class="row"><div><p class="t">Child lock</p><p class="d">Disables the knob and buttons on the valve</p></div><button class="sw" data-k="child"></button></div>
   <div class="row"><div><p class="t">Open‑window detection</p><p class="d">Shuts the valve if temperature drops over 1.5 °C in 5 min</p></div><button class="sw on" data-k="ow"></button></div>
   <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Frost protection <span class="mono val" id="frv">7.0 °C</span></p><p class="d">Valve opens below this, even when off</p><input type="range" id="fr" min="4" max="35" step="0.5" value="7"></div>
 </section>
+</div>
 
+<div class="view" data-view="sensors" hidden>
 <section class="card demo-only">
   <p class="lbl">Sensing</p>
   <div class="two" id="sens"><button class="chip a" data-s="internal">Internal</button><button class="chip" data-s="external">External</button></div>
@@ -118,7 +132,9 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
   <input type="range" id="ac" min="-1" max="-0.2" step="0.2" value="-0.2">
   <div class="row" style="margin-top:12px"><div><p class="t">Smart temperature control</p><p class="d">Adaptive valve opening (PID) · firmware 1.4.4+</p></div><button class="sw on" data-k="smart"></button></div>
 </section>
+</div>
 
+<div class="view" data-view="settings" hidden>
 <section class="card demo-only">
   <p class="lbl">Display</p>
   <p class="d" style="margin:0;font-size:12.5px;color:var(--mute)">Screen orientation</p>
@@ -137,12 +153,20 @@ body.connected .demo-only,body.local-mode .demo-only{display:none}
     <tr><td>Motor running voltage</td><td>1,874 mV</td></tr>
   </table>
 </section>
+</div>
 <p class="foot" id="foot">Simulated preview · run server.js locally to connect Home Assistant</p>
 </main>
+<nav class="dock" aria-label="Main navigation"><div class="dock-inner" role="tablist">
+<button type="button" role="tab" aria-selected="true" data-tab="home"><span class="ico">⌂</span>Room</button>
+<button type="button" role="tab" aria-selected="false" data-tab="climate"><span class="ico">☼</span>Climate</button>
+<button type="button" role="tab" aria-selected="false" data-tab="sensors"><span class="ico">◉</span>Sensors</button>
+<button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico">⚙</span>Settings</button>
+</div></nav>
 <script>
 const S={t:21,c:19.4,mode:'auto',child:false,ow:true,smart:true,v:0,local:false,connected:false,hvacModes:[],battery:null};
 const MIN=5,MAX=30,A0=135,SW=270,$=id=>document.getElementById(id);
 const svg=$('svg'),NS='http://www.w3.org/2000/svg';
+document.querySelectorAll('[data-tab]').forEach(tab=>tab.addEventListener('click',()=>{const name=tab.dataset.tab;document.querySelectorAll('.view').forEach(v=>v.hidden=v.dataset.view!==name);document.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));window.scrollTo({top:0,behavior:'smooth'})}));
 const pt=(a,r)=>{const x=(a-90)*Math.PI/180;return[150+r*Math.cos(x),150+r*Math.sin(x)]};
 const ang=t=>A0+(t-MIN)/(MAX-MIN)*SW;
 let h='<circle cx="150" cy="150" r="140" fill="none" stroke="var(--line)" stroke-width="1"/>';

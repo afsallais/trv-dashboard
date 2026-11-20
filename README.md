@@ -1,56 +1,51 @@
 # TRV-ZBT Valve Console
 
-A browser dashboard for the SONOFF TRV-ZBT Gen 2 radiator valve. It has two modes:
+A browser dashboard for the SONOFF TRV-ZBT Gen 2 radiator valve. It currently has two modes:
 
 - **GitHub Pages preview:** the public site is a simulation and does not control hardware.
 - **Local control:** run this small Node.js service on the same computer as the browser. It reads and controls a Home Assistant `climate` entity, while keeping the Home Assistant token on that computer.
 
+## Direct eWeLink cloud control: feasibility
+
+SONOFF/CoolKit publishes an eWeLink cloud API with endpoints to list devices and send device status updates. A personal developer API option is documented, but access is limited to authorized device brands and types. The API documentation does not specify the TRV-ZBT's cloud setpoint parameter, and the TRV-ZBT gateway list does not include ZBBridge-PR2. The PR2 manual documents Matter bridging and eWeLink pairing, but not a direct developer API.
+
+So direct cloud control is **not yet verified for this exact TRV + PR2 combination**. The dashboard cannot safely call the eWeLink API from its public GitHub Pages JavaScript: application credentials and account authorization would be exposed. A working cloud version would need a private backend to hold credentials, plus confirmation that eWeLink authorizes this TRV and the correct setpoint/status fields. Do not put eWeLink credentials or API tokens in this repository.
+
+Before implementing that connector:
+
+1. Apply for a personal developer application through the official eWeLink developer portal and check whether its authorized device list includes TRV-ZBT and ZBBridge-PR2/sub-devices.
+2. Pair the TRV to the PR2 in eWeLink and confirm the cloud API returns the TRV as a controllable thing, with its current and target temperatures.
+3. Confirm the documented API status-update call accepts a target-temperature command for this device and verify it physically changes the valve setpoint.
+4. Only then add a server-side eWeLink connector. Keep the app credentials and OAuth tokens server-side; the GitHub Pages site must remain a preview unless deployed with a private backend.
+
+Until those checks pass, this project does not claim direct eWeLink cloud control. Its existing local connector is still the Home Assistant prototype described below; it has not been changed to send unverified cloud commands.
+
 The intended device path is **TRV-ZBT → ZBBridge-PR2 → Matter → Home Assistant → this dashboard**. The PR2 is a Zigbee/Matter bridge, not a browser API. Home Assistant must first expose the valve as a controllable climate entity. SONOFF's TRV-ZBT manual does not currently list the PR2 in its gateway list, so confirm the PR2 can pair this valve and expose its thermostat controls to Home Assistant before relying on the dashboard.
 
-## Next steps
+## Next steps: validate the cloud route
 
-### 1. Pair the valve to the PR2
+1. Set up the ZBBridge-PR2 in eWeLink, update its firmware, and pair the TRV-ZBT as a Zigbee sub-device. The TRV manual says to put it in `OFF` mode and hold its middle button for about 2 seconds to enter pairing mode.
+2. Apply for an eWeLink personal developer app and confirm the authorization includes the TRV-ZBT device type. Ask SONOFF/CoolKit whether TRV-ZBT sub-devices behind the PR2 are supported by the cloud API and which status fields set the target temperature and mode.
+3. With an authorized app, verify that the API can list the paired TRV, read its target/current temperature, and send a small setpoint change. Do this before enabling controls in the dashboard.
+4. If those checks pass, add a server-side eWeLink connector and keep its app credentials/tokens outside Git. GitHub Pages alone cannot safely store those credentials.
 
-1. Set up the ZBBridge-PR2 in the eWeLink app and update its firmware.
-2. Add the TRV-ZBT as a Zigbee sub-device in eWeLink. Put the valve in `OFF` mode, then hold its middle button for about 2 seconds until the pairing indicator flashes. Complete pairing from the app.
-3. In the PR2's **Matter** settings, start Matter setup and enable synchronization of bridged sub-devices.
+There is no eWeLink cloud connector in the project yet because the device authorization and TRV command fields are unverified. The `server.js` connector is an earlier Home Assistant prototype; it is not needed for the proposed direct eWeLink route and should not be treated as proof that the PR2/TRV pairing works.
 
-### 2. Add the bridge to Home Assistant
+## Current dashboard behavior
 
-1. Install and start Home Assistant's Matter Server, then set up the Matter integration.
-2. Commission the PR2 into Home Assistant using its Matter setup code/QR code. Follow the PR2 manual's Matter setup flow.
-3. Confirm that the TRV appears in Home Assistant as a `climate` entity and that its state exposes `temperature`, `current_temperature`, and `hvac_modes`. Set a harmless test target in Home Assistant to confirm the valve responds.
-
-If the PR2 does not expose the TRV-ZBT as a controllable `climate` entity, stop here: this dashboard cannot control it through that hub as configured. The PR2 product documentation describes Matter bridging, but that alone does not guarantee every Zigbee feature of this valve is exposed to every Matter controller. Do not put eWeLink or Home Assistant credentials in the dashboard or GitHub.
-
-### 3. Run the local dashboard connector
-
-Requirements: Node.js 18 or newer, Home Assistant reachable from this computer, and a Home Assistant long-lived access token.
-
-1. In Home Assistant, create a long-lived access token from your user profile.
-2. Copy `.env.example` to `.env.local` and fill in:
-   - `HA_URL`: the local URL shown by your Home Assistant installation.
-   - `HA_TOKEN`: the long-lived access token. Keep this file private; it is ignored by Git.
-   - `HA_ENTITY_ID`: the valve's `climate...` entity ID from Home Assistant.
-3. From this folder, run `node server.js`.
-4. Open [http://127.0.0.1:8787](http://127.0.0.1:8787). The header should show **Connected** with the selected device name. Use the target dial and mode buttons to control the valve.
-
-The service binds to `127.0.0.1` only. The Home Assistant token stays in `.env.local` and is used by the local service, not by browser JavaScript. Do not deploy this connector or `.env.local` to GitHub Pages. The GitHub Pages site remains a non-controlling preview because it cannot securely hold a private Home Assistant token or reach a local-only service.
-
-## Supported controls
-
-The local connector reads the climate entity state, current and target temperatures, available HVAC modes, and heating action. It sends temperature and mode changes through Home Assistant's `climate.set_temperature` and `climate.set_hvac_mode` services. Mode buttons are enabled only when Home Assistant reports that mode as supported. The remaining simulated settings in the preview are not sent to the physical valve.
+GitHub Pages is a visual preview only. No buttons on that public page control the physical valve. The legacy `server.js` connector reads a Home Assistant `climate` entity and sends temperature/mode changes; it is described here only for users who choose to run that earlier integration. It does not connect directly to eWeLink or the PR2.
 
 ## Hardware references
 
 - [TRV-ZBT Gen 2 product page](https://sonoff.tech/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt)
 - [TRV-ZBT user manual and pairing guide](https://support.sonoff.tech/trv-zbt-usermanual/)
 - [ZBBridge-PR2 user manual and Matter setup](https://support.sonoff.tech/zb-bridge-pr2-usermanual/)
-- [Home Assistant Matter integration](https://www.home-assistant.io/integrations/matter/)
-- [Home Assistant REST API](https://developers.home-assistant.io/docs/api/rest/)
+- [eWeLink cloud API documentation](https://github.com/CoolKit-Technologies/eWeLink-API)
+- [eWeLink API access options and limits](https://github.com/CoolKit-Technologies/eWeLink-API/blob/main/en/Pricing.md)
+- [eWeLink developer portal](https://dev.ewelink.cc/)
 
 ## Files
 
 - `index.html` — dashboard UI. It runs in demo mode on GitHub Pages and connects to `/api` when served locally.
-- `server.js` — local Home Assistant connector and static file server.
-- `.env.example` — configuration template. Copy it to `.env.local` and add your private details.
+- `server.js` — legacy local Home Assistant connector and static file server; not an eWeLink connector.
+- `.env.example` — configuration template for that legacy connector. Do not add eWeLink credentials here unless a future server-side connector is implemented.
