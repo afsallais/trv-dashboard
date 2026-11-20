@@ -1,57 +1,93 @@
-# TRV-ZBT Valve Console
+# SONOFF TRV-ZBT Cloud Dashboard
 
-A browser dashboard for the SONOFF TRV-ZBT Gen 2 radiator valve. It currently has two modes:
+A mobile-first dashboard for the SONOFF TRV-ZBT Gen 2 and Zigbee sensors connected through a SONOFF ZBBridge-P. The intended deployment is Cloudflare Pages with a server-side Pages Function that talks to eWeLink Cloud. GitHub Pages remains a demo only because it cannot run this protected backend.
 
-- **GitHub Pages preview:** the public site is a simulation and does not control hardware.
-- **Local control:** run this small Node.js service on the same computer as the browser. It reads and controls a Home Assistant `climate` entity, while keeping the Home Assistant token on that computer.
+## Hardware support confirmed in SONOFF documentation
 
-## Direct eWeLink cloud control: feasibility
+- **ZBBridge-P** is listed by SONOFF as a recommended gateway for TRV-ZBT, SNZB-02P, and SNZB-04PR2.
+- **SNZB-02P** reports temperature and humidity. SONOFF says some features depend on the gateway.
+- **SNZB-04PR2** reports open/closed and tamper state and can trigger eWeLink scenes.
+- **TRV-ZBT Gen 2** supports Off/Frost, Auto, Manual, Boost, temporary timer, child lock, schedules, open-window detection, and remote temperature-source features through supported app/gateway functions.
 
-SONOFF/CoolKit publishes an eWeLink cloud API with endpoints to list devices and send device status updates. A personal developer API option is documented, but access is limited to authorized device brands and types. The API documentation does not specify the TRV-ZBT's cloud setpoint parameter, and the TRV-ZBT gateway list does not include ZBBridge-PR2. The PR2 manual documents Matter bridging and eWeLink pairing, but not a direct developer API.
+The dashboard discovers account devices and reads their latest eWeLink status. It displays temperature, humidity, contact, tamper, and battery when those values are actually included in the API response. It enables TRV setpoint or mode commands only after you configure a verified field map for the exact model. No guessed write fields are enabled.
 
-So direct cloud control is **not yet verified for this exact TRV + PR2 combination**. The dashboard cannot safely call the eWeLink API from its public GitHub Pages JavaScript: application credentials and account authorization would be exposed. A working cloud version would need a private backend to hold credentials, plus confirmation that eWeLink authorizes this TRV and the correct setpoint/status fields. Do not put eWeLink credentials or API tokens in this repository.
+## Cloudflare Pages setup
 
-Before implementing that connector:
+1. Create a Cloudflare Pages project connected to this Git repository. Use the repository root as the output directory; there is no build command. Pages automatically serves `functions/api/` as server-side API routes.
+2. Create a Cloudflare KV namespace and add it to the Pages project as a binding named **`EWELINK_KV`**.
+3. Add these as **Pages environment variables/secrets** (Production and Preview as appropriate). Never commit them or put them in dashboard JavaScript:
 
-1. Apply for a personal developer application through the official eWeLink developer portal and check whether its authorized device list includes TRV-ZBT and ZBBridge-PR2/sub-devices.
-2. Pair the TRV to the PR2 in eWeLink and confirm the cloud API returns the TRV as a controllable thing, with its current and target temperatures.
-3. Confirm the documented API status-update call accepts a target-temperature command for this device and verify it physically changes the valve setpoint.
-4. Only then add a server-side eWeLink connector. Keep the app credentials and OAuth tokens server-side; the GitHub Pages site must remain a preview unless deployed with a private backend.
+   | Name | Type | Purpose |
+   | --- | --- | --- |
+   | `DASHBOARD_PASSWORD` | Secret | Password for the dashboard sign-in form. Use a unique long password. |
+   | `EWELINK_APP_ID` | Secret | APPID assigned to your eWeLink developer application. |
+   | `EWELINK_APP_SECRET` | Secret | App secret issued with that application. |
+   | `EWELINK_ACCOUNT` | Secret | eWeLink account email or phone number. |
+   | `EWELINK_PASSWORD` | Secret | eWeLink account password used by the documented login endpoint. |
+   | `EWELINK_COUNTRY_CODE` | Variable | `+31` for your Netherlands account. |
+   | `EWELINK_REGION` | Variable | `eu` for the Netherlands. |
+   | `EWELINK_CONTROL_FIELDS` | Secret/variable | Optional JSON mapping of model-specific writable fields, only after verified against your device. Leave unset initially. |
 
-Until those checks pass, this project does not claim direct eWeLink cloud control. Its existing local connector is still the Home Assistant prototype described below; it has not been changed to send unverified cloud commands.
+4. Deploy. Open the Pages URL and sign in with `DASHBOARD_PASSWORD`. The API session is an HTTP-only, same-site cookie; failed passwords are rate-limited using the KV namespace. The eWeLink password and tokens stay in the Pages Function and KV, not in the browser or repository.
+5. In the eWeLink app, set up the ZBBridge-P, update its firmware, then add each Zigbee device to that bridge. In the dashboard, use **Sensors → Refresh devices**. The bridge, TRV, and sensors must be visible in the eWeLink account associated with the API credentials.
 
-The intended device path is **TRV-ZBT → ZBBridge-PR2 → Matter → Home Assistant → this dashboard**. The PR2 is a Zigbee/Matter bridge, not a browser API. Home Assistant must first expose the valve as a controllable climate entity. SONOFF's TRV-ZBT manual does not currently list the PR2 in its gateway list, so confirm the PR2 can pair this valve and expose its thermostat controls to Home Assistant before relying on the dashboard.
+### eWeLink developer access is required
 
-## Next steps: validate the cloud route
+The official API requires an assigned APPID/APPSECRET, account authorization for the requested device types, and account login. SONOFF/CoolKit's current developer guide says APPIDs are assigned after business cooperation. If the developer portal still does not let you create an application, the connector cannot authenticate yet. Ask eWeLink/CoolKit for an APPID and confirmation that **TRV-ZBT plus Zigbee sub-devices behind ZBBridge-P** are authorized for that APPID. An eWeLink account alone is not enough.
 
-1. Set up the ZBBridge-PR2 in eWeLink, update its firmware, and pair the TRV-ZBT as a Zigbee sub-device. The TRV manual says to put it in `OFF` mode and hold its middle button for about 2 seconds to enter pairing mode.
-2. Apply for an eWeLink personal developer app and confirm the authorization includes the TRV-ZBT device type. Ask SONOFF/CoolKit whether TRV-ZBT sub-devices behind the PR2 are supported by the cloud API and which status fields set the target temperature and mode.
-3. With an authorized app, verify that the API can list the paired TRV, read its target/current temperature, and send a small setpoint change. Do this before enabling controls in the dashboard.
-4. If those checks pass, add a server-side eWeLink connector and keep its app credentials/tokens outside Git. GitHub Pages alone cannot safely store those credentials.
+## Verify the device-specific commands after pairing
 
-There is no eWeLink cloud connector in the project yet because the device authorization and TRV command fields are unverified. The `server.js` connector is an earlier Home Assistant prototype; it is not needed for the proposed direct eWeLink route and should not be treated as proof that the PR2/TRV pairing works.
+The eWeLink API exposes a device's status `params` and accepts a `params` object for control, but its generic endpoint documentation does not define the writable TRV-ZBT Gen 2 field names or accepted values. The hardware has not arrived/been paired yet, so those commands cannot be validated here.
 
-## Current dashboard behavior
+After the devices arrive:
 
-The mobile dashboard now surfaces the Gen 2 feature set: three weekly plans, 7-day schedules with up to 12 changes per day, Auto/Manual/Off modes, boost and timer, external temperature, window and presence linkage, child lock, frost protection, temperature calibration/accuracy, adaptive control, valve opening limits, low-battery valve behavior, screen direction, valve calibration, diagnostics, and a history graph. The graph uses labeled illustrative data in preview mode and shows no history when connected to the current Home Assistant connector. The dashboard also reads the current 2 m air-temperature estimate for Delft, Netherlands from Open-Meteo, refreshing every 15 minutes. When outside tracking is enabled, that value plus the selected offset updates the valve target; it sends the setpoint only when the local Home Assistant connector is connected. The weather value is a model estimate, not a room sensor.
+1. Pair the TRV-ZBT, SNZB-02P, and SNZB-04PR2 with the ZBBridge-P in the eWeLink app and confirm they work in the app first.
+2. Sign into this dashboard and check **Sensors**. Confirm the live temperature/humidity, open/closed, tamper, and battery values match eWeLink. The cloud API must list the Zigbee sub-devices individually for the dashboard to show them.
+3. Check the TRV's reported parameters with eWeLink developer support or an authorized API diagnostic. Identify the exact writable setpoint parameter and its unit/scale; identify the mode parameter and accepted values. Do not infer writable keys from display labels.
+4. Only after confirming a small setpoint change with the actual valve, configure a model entry in `EWELINK_CONTROL_FIELDS`, for example:
 
-GitHub Pages is a visual preview only. Schedule and quick-action settings in the preview are saved in that browser and do not reach the physical valve. The legacy `server.js` connector reads a Home Assistant `climate` entity and sends only target-temperature and supported HVAC-mode changes. In local mode, the newly surfaced Gen 2 features are shown but disabled because that connector does not implement them. It does not connect directly to eWeLink or the PR2.
+   ```json
+   {
+     "TRV-ZBT": {
+       "temperature": { "key": "REPLACE_WITH_VERIFIED_TARGET_FIELD", "scale": 1 },
+       "currentTemperature": "REPLACE_WITH_VERIFIED_ROOM_TEMPERATURE_FIELD",
+       "battery": "REPLACE_WITH_VERIFIED_BATTERY_FIELD",
+       "mode": {
+         "key": "REPLACE_WITH_VERIFIED_MODE_FIELD",
+         "values": { "off": "VERIFIED_OFF_VALUE", "auto": "VERIFIED_AUTO_VALUE", "heat": "VERIFIED_MANUAL_VALUE" }
+       }
+     }
+   }
+   ```
 
-SONOFF's product page lists ZBBridge-U among its Matter bridges and its current TRV manual recommends ZBBridge-P/U, NSPanel Pro, iHost and several dongles; the PR2 is not explicitly named in those TRV-specific compatibility lists. SONOFF also states that full native Zigbee2MQTT support for TRV-ZBT requires Zigbee2MQTT 2.12.1 or later. Zigbee2MQTT documents the individual device controls and schedule fields. This confirms a path for a later feature-complete connector, but does not verify the PR2/eWeLink developer API path.
+   Replace every example value with the values confirmed for your API response; the placeholders above are not usable commands. `currentTemperature`, `battery`, and `valvePosition` are optional read-only field mappings. Set the JSON as a Cloudflare Pages variable/secret and redeploy. Then verify each mode and setpoint against the physical TRV screen and eWeLink app.
+5. The dashboard currently leaves schedules, Boost, temporary timer, child lock, calibration, valve limits, and other advanced settings disabled in cloud mode. Enable those only after each exact field and behavior has been verified; they cannot be safely invented from the generic cloud API docs.
 
-## Hardware references
+## Link the extra sensors to the TRV
 
-- [TRV-ZBT user manual and pairing guide](https://support.sonoff.tech/trv-zbt-usermanual/)
-- [TRV-ZBT product features and compatibility](https://sonoff.tech/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt)
-- [Zigbee2MQTT TRV-ZBT supported controls](https://www.zigbee2mqtt.io/devices/TRV-ZBT.html)
-- [Open-Meteo Forecast API documentation](https://open-meteo.com/en/docs)
-- [ZBBridge-PR2 user manual and Matter setup](https://support.sonoff.tech/zb-bridge-pr2-usermanual/)
-- [eWeLink cloud API documentation](https://github.com/CoolKit-Technologies/eWeLink-API)
-- [eWeLink API access options and limits](https://github.com/CoolKit-Technologies/eWeLink-API/blob/main/en/Pricing.md)
-- [eWeLink developer portal](https://dev.ewelink.cc/)
+The dashboard can display readings and states that the API returns. A displayed SNZB-02P value does **not** automatically become the TRV's thermostat input, and a displayed open window does **not** itself stop heating. In eWeLink, create the supported sensor/valve linkage or smart scene and verify it operates with the phone/dashboard closed. SONOFF's TRV manual describes a linked door/window sensor as a trigger for open-window detection; configure the supported linkage in the eWeLink app. This allows the gateway/app automation to perform the Zigbee action independently of the dashboard.
 
-## Files
+The API supports cloud control and device polling, not a direct browser-to-Zigbee connection. This design uses Cloudflare Pages Functions as the always-available cloud connector; it requires no home PC or Raspberry Pi. Zigbee actions still require the powered ZBBridge-P and eWeLink cloud/account availability.
 
-- `index.html` — dashboard UI. It runs in demo mode on GitHub Pages and connects to `/api` when served locally.
-- `server.js` — legacy local Home Assistant connector and static file server; not an eWeLink connector.
-- `.env.example` — configuration template for that legacy connector. Do not add eWeLink credentials here unless a future server-side connector is implemented.
+## API and deployment notes
+
+- Cloud API base for Europe: `https://eu-apia.coolkit.cc`.
+- The backend reads the current device list and the project devices' status at a 60-second dashboard refresh. It spaces individual status requests to respect eWeLink's documented minimum call interval and polls at most 40 device statuses per refresh. Keep polling at this interval.
+- The public GitHub repository must never contain eWeLink credentials, KV contents, dashboard password, or session tokens. A private GitHub repository does not replace server-side secrets.
+- Cloudflare Pages deployments use the `functions/api/[[path]].js` handler. `server.js` is retained only as the earlier Home Assistant local prototype and is not used by the Cloudflare deployment.
+- History, Boost countdown, weather estimate, and schedule UI have distinct preview behavior. The generic eWeLink API does not provide the TRV's six-month history or confirm advanced TRV command semantics through the documentation used here; no preview values should be mistaken for device history or a sent command.
+
+## References
+
+- [TRV-ZBT Gen 2 user manual](https://support.sonoff.tech/trv-zbt-usermanual/)
+- [SNZB-02P user manual](https://support.sonoff.tech/snzb-02p-usermanual/)
+- [SNZB-04PR2 user manual](https://support.sonoff.tech/snzb-04pr2-usermanual/)
+- [ZBBridge-P product page](https://sonoff.tech/en-us/products/sonoff-zigbee-bridge-pro)
+- [eWeLink API v2 reference](https://github.com/CoolKit-Technologies/eWeLink-API/blob/main/en/APICenterV2.md)
+- [eWeLink API developer guide](https://github.com/CoolKit-Technologies/eWeLink-API/blob/main/en/DeveloperGuideV2.md)
+
+## Project files
+
+- `index.html` — dashboard UI, demo mode on GitHub Pages and Cloudflare-connected status/controls when deployed with Functions.
+- `functions/api/[[path]].js` — protected Cloudflare Pages API for session login, eWeLink authentication, device discovery/status, and verified-field TRV writes.
+- `server.js` — legacy local Home Assistant prototype.
