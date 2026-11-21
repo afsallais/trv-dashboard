@@ -4,13 +4,17 @@
   Board: ESP32S3 Dev Module | Flash 8MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
 
   Buttons (pins from the Elecrow docs, active-LOW, interrupt driven):
-            MENU (IO2) = switch screen: TRV -> Timetable -> Calendar
+            MENU (IO2) = switch screen: TRV -> Timetable -> Calendar -> Settings -> History
             TRV screen:      ROTARY UP (IO6) / DOWN (IO4) = target +/- 0.5 C (hold = repeat)
                              ROTARY PRESS (IO5) = next mode      EXIT (IO1) = toggle "window open" (demo)
             Calendar screen: ROTARY UP / DOWN = previous / next day (hold = repeat)
                              ROTARY PRESS = bookmark / un-bookmark the day (saved in flash)
                              EXIT = jump to today.
             Timetable screen: ROTARY UP / DOWN = previous / next day (today..+6), OK = re-download the .ics, EXIT = today.
+            Settings screen: ROTARY UP / DOWN = select item, OK = edit / save the value, EXIT = cancel edit or back to TRV.
+                             Values are saved in flash. "Reset defaults" needs OK twice.
+            History screen:  ROTARY UP / DOWN = range 24h / 30d / 6m, OK = show all / room / target / heating only, EXIT = reset view.
+                             Logs room temp, target and valve opening itself (needs Wi-Fi time): 24 h in RAM, daily records in flash.
             Presses are also logged on Serial (115200).
   Timetable: paste your .ics / webcal link into ICAL_URL (DTSTART/DTEND, SUMMARY, LOCATION, weekly/daily RRULE + EXDATE supported;
   floating or Z times; zone-specific TZID times are read as local time).
@@ -65,18 +69,23 @@ GxEPD2_BW<GxEPD2_579_GDEY0579T93, GxEPD2_579_GDEY0579T93::HEIGHT>
 
 // ---------- state ----------
 struct Slot { float from, to, temp; };
-const Slot SCH[] = {{0,6,17},{6,8,21},{8,17,18},{17,22,22.5},{22,24,17}};
+Slot SCH[] = {{0,6,17},{6,8,21},{8,17,18},{17,22,22.5},{22,24,17}};
+const float DEF_SCH[5] = {17, 21, 18, 22.5, 17};
 const char* MODE_NAME[4] = {"Auto", "Eco", "Comfort", "Frost (5C)"};
-const float MODE_TEMP[4] = {0, 18, 22, 5};
+float MODE_TEMP[4] = {0, 18, 22, 5};
+const float DEF_MODE[4] = {0, 18, 22, 5};
+float tOff = 0;                  // sensor calibration offset (C), set in Settings
 
 float cur = 21.8, hum = 49;
 float ovr = 0; bool hasOvr = false; int ovrSlot = -1;
 int  mode = 0;
 bool winOpen = false;
 int  battPct = 82;
-bool dirty = true, forceFull = true;
+bool dirty = true, headerDirty = false, calendarClockDirty = false, forceFull = true;
 int  partialCount = 0, lastMin = -1;
+int  lastSetSelDrawn = -1;
 uint32_t lastDraw = 0, lastSim = 0;
+float curC() { return cur + tOff; }   // room temperature incl. calibration offset
 
 // ---------- logic ----------
 float hourNow() {
@@ -95,7 +104,7 @@ float eff() {
 }
 int valvePct() {
   if (winOpen) return 0;
-  return constrain((int)((eff() - cur) * 80), 0, 100);
+  return constrain((int)((eff() - curC()) * 80), 0, 100);
 }
 void adjust(float d) {
   ovr = constrain(round((eff() + d) * 2) / 2.0, 5.0, 30.0);
@@ -125,18 +134,18 @@ void txt(int x, int y, const GFXfont* f, const char* s, int al = 0, uint16_t c =
   display.setCursor(px, y); display.print(s);
 }
 // number + degree ring + "C"  (GFX fonts have no degree sign)
-void tempStr(int x, int y, float v, int dec, const GFXfont* nf, uint8_t ns, const GFXfont* uf, int r, int al) {
+void tempStr(int x, int y, float v, int dec, const GFXfont* nf, uint8_t ns, const GFXfont* uf, int r, int al, uint16_t col = BLK) {
   char b[12]; dtostrf(v, 0, dec, b);
   int16_t x1, y1; uint16_t w, h, cw, ch;
   display.setFont(nf); display.setTextSize(ns); display.getTextBounds(b, 0, 0, &x1, &y1, &w, &h);
   display.setFont(uf); display.setTextSize(1);  display.getTextBounds("C", 0, 0, &x1, &y1, &cw, &ch);
   int total = w + 4 + 2 * r + 2 + cw;
   int sx = al == 0 ? x : (al == 1 ? x - total / 2 : x - total);
-  txt(sx, y, nf, b, 0, BLK, ns);
+  txt(sx, y, nf, b, 0, col, ns);
   int topY = y - h;                              // top of the digits
-  display.drawCircle(sx + w + 4 + r, topY + r + 1, r, BLK);
-  if (r > 3) display.drawCircle(sx + w + 4 + r, topY + r + 1, r - 1, BLK);
-  txt(sx + w + 4 + 2 * r + 2, topY + ch, uf, "C", 0, BLK, 1);
+  display.drawCircle(sx + w + 4 + r, topY + r + 1, r, col);
+  if (r > 3) display.drawCircle(sx + w + 4 + r, topY + r + 1, r - 1, col);
+  txt(sx + w + 4 + 2 * r + 2, topY + ch, uf, "C", 0, col, 1);
 }
 void arc(int cx, int cy, int r, int a0, int a1) {
   for (int a = a0; a <= a1; a++) { float t = a * DEG_TO_RAD; display.fillCircle(cx + r * cos(t), cy + r * sin(t), 1, BLK); }
@@ -160,6 +169,9 @@ void iconGear(int cx, int cy) {
 void drawHeader(const char* title, int icon) {
   struct tm t; bool haveTime = getLocalTime(&t, 0); char b[40];
   if (icon == 0) { display.drawLine(26, 17, 36, 8, BLK); display.drawLine(36, 8, 46, 17, BLK); display.drawRect(29, 17, 14, 9, BLK); }
+  else if (icon == 4) { display.drawLine(27, 7, 27, 26, BLK); display.drawLine(27, 26, 46, 26, BLK); display.drawLine(27, 22, 33, 15, BLK);
+                        display.drawLine(33, 15, 38, 19, BLK); display.drawLine(38, 19, 46, 9, BLK); display.drawLine(27, 23, 33, 16, BLK); display.drawLine(33, 16, 38, 20, BLK); display.drawLine(38, 20, 46, 10, BLK); }
+  else if (icon == 3) { iconGear(36, 17); }
   else if (icon == 2) { display.drawCircle(36, 16, 10, BLK); display.drawCircle(36, 16, 9, BLK); display.drawLine(36, 16, 36, 9, BLK); display.drawLine(37, 16, 37, 9, BLK); display.drawLine(36, 16, 41, 19, BLK); }
   else { display.drawRoundRect(27, 9, 18, 17, 2, BLK); display.drawFastHLine(27, 14, 18, BLK); display.drawFastHLine(27, 15, 18, BLK);
          display.fillRect(32, 6, 2, 6, BLK); display.fillRect(39, 6, 2, 6, BLK); display.fillRect(31, 18, 3, 3, BLK); display.fillRect(37, 18, 3, 3, BLK); }
@@ -188,7 +200,7 @@ void drawUI() {
   display.drawRoundRect(39, 62, 12, 56, 6, BLK); display.drawRoundRect(40, 63, 10, 54, 5, BLK);
   display.fillCircle(45, 121, 13, BLK); display.fillRoundRect(42, 86, 6, 36, 3, BLK);
   for (int i = 0; i < 5; i++) display.fillRect(57, 70 + i * 8, 5, 2, BLK);
-  tempStr(78, 103, cur, 1, &FreeSansBold24pt7b, 1, &FreeSansBold12pt7b, 4, 0);
+  tempStr(78, 103, curC(), 1, &FreeSansBold24pt7b, 1, &FreeSansBold12pt7b, 4, 0);
   display.fillTriangle(92, 118, 84, 131, 100, 131, BLK); display.fillCircle(92, 131, 8, BLK);
   snprintf(b, sizeof b, "%d %% RH", (int)hum); txt(110, 137, &FreeSansBold9pt7b, b);
   display.drawFastHLine(27, 155, 191, BLK);
@@ -238,7 +250,8 @@ void drawUI() {
     if (on) display.fillRoundRect(xs[i], 222, xs[i + 1] - xs[i], 38, 8, BLK); else if (i > 0) display.drawFastVLine(xs[i], 224, 34, BLK);
     int ix = mid + io[i], iy = 241;
     if (i == 0) iconFlame(ix, iy, c, bg); else if (i == 1) iconLeaf(ix, iy, c, bg); else if (i == 2) iconSofa(ix, iy, c); else iconSnow(ix, iy, c);
-    txt(mid + to[i], 247, &FreeSansBold9pt7b, MODE_NAME[i], 0, c);
+    char lb[16]; if (i == 3) snprintf(lb, sizeof lb, "Frost (%dC)", (int)MODE_TEMP[3]); else strcpy(lb, MODE_NAME[i]);
+    txt(mid + to[i], 247, &FreeSansBold9pt7b, lb, 0, c);
   }
   vline2(638, 224, 258); iconGear(680, 241); txt(703, 247, &FreeSansBold9pt7b, "Settings");
 }
@@ -514,14 +527,314 @@ void drawTimetable() {
   else if (m2 > 4) { snprintf(b, sizeof b, "+%d more", m2 - 4); txt(556, 262, &FreeSans9pt7b, b); }
 }
 
-void drawScreen() { if (screen == 0) drawUI(); else if (screen == 1) drawCalendar(); else drawTimetable(); }
+// ---------- settings screen (MENU cycles TRV -> Timetable -> Calendar -> Settings) ----------
+const uint8_t NEXT_SCREEN[5] = {2, 3, 1, 4, 0};  // screen ids: 0 TRV, 1 calendar, 2 timetable, 3 settings, 4 history
+#define SET_N 10
+const char* SET_LABEL[SET_N] = {"Night 00-06", "Morning 06-08", "Day 08-17", "Evening 17-22", "Late 22-24",
+                                "Eco", "Comfort", "Frost", "Sensor offset", "Reset defaults"};
+int setSel = 0; bool setEdit = false, resetArm = false;
+
+void loadSettings() {
+  char k[4];
+  for (int i = 0; i < 5; i++) { snprintf(k, sizeof k, "s%d", i); SCH[i].temp = prefs.getFloat(k, DEF_SCH[i]); }
+  for (int i = 1; i < 4; i++) { snprintf(k, sizeof k, "m%d", i); MODE_TEMP[i] = prefs.getFloat(k, DEF_MODE[i]); }
+  tOff = prefs.getFloat("off", 0);
+}
+void saveSettings() {
+  char k[4];
+  for (int i = 0; i < 5; i++) { snprintf(k, sizeof k, "s%d", i); prefs.putFloat(k, SCH[i].temp); }
+  for (int i = 1; i < 4; i++) { snprintf(k, sizeof k, "m%d", i); prefs.putFloat(k, MODE_TEMP[i]); }
+  prefs.putFloat("off", tOff);
+}
+float* setPtr(int i) { if (i < 5) return &SCH[i].temp; if (i < 8) return &MODE_TEMP[i - 4]; return &tOff; }
+void setRange(int i, float& lo, float& hi, float& st) {
+  if (i < 5)       { lo = 5;   hi = 30; st = 0.5f; }   // schedule slots
+  else if (i == 5) { lo = 12;  hi = 21; st = 0.5f; }   // eco
+  else if (i == 6) { lo = 18;  hi = 26; st = 0.5f; }   // comfort
+  else if (i == 7) { lo = 3;   hi = 10; st = 1.0f; }   // frost
+  else             { lo = -3;  hi = 3;  st = 0.1f; }   // sensor offset
+}
+void settingsRotary(int up, int n) {                    // up = +1 (rotary UP) or -1 (rotary DOWN)
+  resetArm = false; dirty = true;
+  if (!setEdit) { setSel = (setSel + SET_N * 4 - up * n) % SET_N; return; }
+  float lo, hi, st; setRange(setSel, lo, hi, st); float* p = setPtr(setSel);
+  *p = constrain(roundf((*p + up * n * st) / st) * st, lo, hi);
+}
+void settingsOK() {
+  dirty = true;
+  if (setSel == SET_N - 1) {                            // reset row: press OK twice
+    if (!resetArm) { resetArm = true; return; }
+    for (int i = 0; i < 5; i++) SCH[i].temp = DEF_SCH[i];
+    for (int i = 1; i < 4; i++) MODE_TEMP[i] = DEF_MODE[i];
+    tOff = 0; hasOvr = false; resetArm = false; setEdit = false; saveSettings(); return;
+  }
+  if (setEdit) saveSettings();                          // leaving edit mode = commit
+  setEdit = !setEdit;
+}
+void exitSettings() {
+  if (setEdit || resetArm) { setEdit = false; resetArm = false; loadSettings(); }   // cancel
+  else { screen = 0; forceFull = true; }                                            // back to TRV
+  dirty = true;
+}
+void settingRow(int i, int x, int ry, int w) {
+  bool sel = (setSel == i), ed = sel && setEdit; uint16_t fg = sel ? WHT : BLK;
+  if (sel) display.fillRoundRect(x, ry, w, 32, 8, BLK); else display.drawRoundRect(x, ry, w, 32, 8, BLK);
+  if (ed) display.drawRoundRect(x + 3, ry + 3, w - 6, 26, 6, WHT);
+  txt(x + 16, ry + 22, &FreeSansBold9pt7b, SET_LABEL[i], 0, fg);
+  if (i == SET_N - 1) { txt(x + w - 16, ry + 22, &FreeSans9pt7b, resetArm ? "OK again" : "OK", 2, fg); return; }
+  float v = *setPtr(i); if (fabsf(v) < 0.05f) v = 0;
+  tempStr(x + w - 16, ry + 22, v, i == 7 ? 0 : 1, &FreeSansBold9pt7b, 1, &FreeSansBold9pt7b, 2, 2, fg);
+}
+void drawSettings() {
+  display.fillScreen(WHT); display.drawRect(0, 0, 792, 272, BLK); display.drawRect(1, 1, 790, 270, BLK);
+  drawHeader("Settings", 3);
+  txt(16, 56, &FreeSansBold12pt7b, "Schedule temperatures");
+  txt(412, 56, &FreeSansBold12pt7b, "Modes and sensor");
+  vline2(395, 44, 244);
+  for (int r = 0; r < 5; r++) { settingRow(r, 14, 64 + r * 36, 368); settingRow(5 + r, 410, 64 + r * 36, 368); }
+  display.drawFastHLine(16, 246, 760, BLK);
+  const char* h = resetArm ? "OK again: reset all settings     Exit: cancel"
+                : setEdit  ? "Up / Down: change value     OK: save     Exit: cancel"
+                           : "Up / Down: select     OK: edit     Exit: back to TRV";
+  txt(396, 263, &FreeSans9pt7b, h, 1);
+}
+
+// ---------- history screen: "Thermal dynamics" (room / target / heating; 24 h, 30 d, 6 m) ----------
+// The sketch logs its own data: every 30 min a sample (room temp incl. offset, target, valve %) goes into a 24 h RAM ring;
+// each finished day is condensed into one record (avg room, peak target, avg valve %) and kept in flash (~6 months).
+// Needs the clock (Wi-Fi/NTP). A restart clears the 24 h ring; daily records survive.
+#define H_N 48
+#define D_N 186
+struct HSamp { uint32_t slot; int16_t room10, tgt10; uint8_t heat; };
+struct DayRec { uint32_t date; int16_t room10, tgt10; uint8_t heat; };      // date = yyyymmdd
+HSamp hs[H_N]; DayRec dr[D_N]; int drN = 0;
+uint32_t hLastSlot = 0, accDate = 0; float accRoom = 0, accHeat = 0, accTgt = -99; int accN = 0;
+int hvRange = 0, hvPreset = 0;                                              // range 0/1/2 = 24h/30d/6m; preset 0 all,1 room,2 target,3 heating
+float gR[H_N], gT[H_N], gH[H_N]; bool gOK[H_N]; int gN = 0;
+int tkI[6], tkN = 0; char tkS[6][8];
+
+void loadHistory() {
+  size_t l = prefs.getBytesLength("hd"); drN = l / sizeof(DayRec);
+  if (drN > D_N || (size_t)drN * sizeof(DayRec) != l) drN = 0; else if (drN) prefs.getBytes("hd", dr, l);
+}
+void pushDay(uint32_t date) {
+  if (!accN) return;
+  DayRec r; r.date = date; r.room10 = (int16_t)lroundf(accRoom / accN * 10); r.tgt10 = (int16_t)lroundf(accTgt * 10); r.heat = (uint8_t)lroundf(accHeat / accN);
+  if (drN == D_N) { memmove(&dr[0], &dr[1], (D_N - 1) * sizeof(DayRec)); drN--; }
+  dr[drN++] = r; prefs.putBytes("hd", dr, drN * sizeof(DayRec));
+  accRoom = accHeat = 0; accTgt = -99; accN = 0;
+}
+void historyTick() {
+  static uint32_t chk = 0; if (millis() - chk < 15000) return; chk = millis();
+  struct tm t; if (!getLocalTime(&t, 0)) return;
+  uint32_t slot = (uint32_t)(time(nullptr) / 1800), date = (t.tm_year + 1900) * 10000UL + (t.tm_mon + 1) * 100 + t.tm_mday;
+  if (accDate && date != accDate) pushDay(accDate);
+  accDate = date;
+  if (slot == hLastSlot) return;
+  hLastSlot = slot;
+  HSamp& s = hs[slot % H_N]; float rc = curC(), tg = eff(); int vp = valvePct();
+  s.slot = slot; s.room10 = (int16_t)lroundf(rc * 10); s.tgt10 = (int16_t)lroundf(tg * 10); s.heat = (uint8_t)vp;
+  accRoom += rc; accHeat += vp; accTgt = max(accTgt, tg); accN++;
+  if (screen == 4) dirty = true;
+}
+bool dayVals(uint32_t key, float& r, float& t, float& h) {
+  for (int i = 0; i < drN; i++) if (dr[i].date == key) { r = dr[i].room10 / 10.0f; t = dr[i].tgt10 / 10.0f; h = dr[i].heat; return true; }
+  if (accN && key == accDate) { r = accRoom / accN; t = accTgt; h = accHeat / accN; return true; }
+  return false;
+}
+void buildSeries(const struct tm& now) {
+  tkN = 0;
+  if (hvRange == 0) {                                                       // last 24 h, 30-minute samples
+    gN = H_N; uint32_t cs = (uint32_t)(time(nullptr) / 1800);
+    for (int i = 0; i < H_N; i++) {
+      uint32_t sl = cs - (H_N - 1) + i; HSamp& s = hs[sl % H_N]; gOK[i] = (s.slot == sl);
+      if (gOK[i]) { gR[i] = s.room10 / 10.0f; gT[i] = s.tgt10 / 10.0f; gH[i] = s.heat; }
+    }
+    const int ti[5] = {0, 12, 24, 36, 47}; const char* ts[5] = {"-24h", "-18h", "-12h", "-6h", "now"};
+    for (int k = 0; k < 5; k++) { tkI[k] = ti[k]; strcpy(tkS[k], ts[k]); } tkN = 5;
+  } else if (hvRange == 1) {                                                // last 30 days, one value per day
+    gN = 30;
+    for (int i = 0; i < 30; i++) {
+      struct tm c = now; c.tm_hour = 12; c.tm_min = c.tm_sec = 0; c.tm_mday -= 29 - i; c.tm_isdst = -1; mktime(&c);
+      uint32_t key = (c.tm_year + 1900) * 10000UL + (c.tm_mon + 1) * 100 + c.tm_mday;
+      gOK[i] = dayVals(key, gR[i], gT[i], gH[i]);
+      if (i == 0 || i == 7 || i == 14 || i == 21 || i == 29) { tkI[tkN] = i; snprintf(tkS[tkN], 8, "%d", c.tm_mday); tkN++; }
+    }
+  } else {                                                                  // last 6 calendar months, monthly values
+    gN = 6;
+    for (int i = 0; i < 6; i++) {
+      int y = now.tm_year + 1900, m = now.tm_mon + 1 - (5 - i); while (m < 1) { m += 12; y--; }
+      uint32_t ym = y * 100UL + m; float sr = 0, sh = 0, mt = -99; int cnt = 0;
+      for (int j = 0; j < drN; j++) if (dr[j].date / 100 == ym) { sr += dr[j].room10 / 10.0f; sh += dr[j].heat; mt = max(mt, dr[j].tgt10 / 10.0f); cnt++; }
+      if (accN && accDate / 100 == ym) { sr += accRoom / accN; sh += accHeat / accN; mt = max(mt, accTgt); cnt++; }
+      gOK[i] = cnt > 0; if (cnt) { gR[i] = sr / cnt; gT[i] = mt; gH[i] = sh / cnt; }
+      tkI[tkN] = i; strcpy(tkS[tkN], MON3[m - 1]); tkN++;
+    }
+  }
+}
+void historyRotary(int up, int n) { hvRange = (hvRange + 33 - up * n) % 3; dirty = true; }   // DOWN = next range
+void historyOK() { hvPreset = (hvPreset + 1) % 4; dirty = true; }
+void historyExit() { hvRange = 0; hvPreset = 0; dirty = true; }
+
+void pill(int x, int y, int w, int h, const char* s, bool on) {
+  if (on) display.fillRoundRect(x, y, w, h, h / 2, BLK); else display.drawRoundRect(x, y, w, h, h / 2, BLK);
+  txt(x + w / 2, y + h - 7, &FreeSansBold9pt7b, s, 1, on ? WHT : BLK);
+}
+void dashSeg(int x0, int y0, int x1, int y1) {                              // consistent 6 px on / 4 px off dash pattern
+  int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy, step = 0;
+  while (true) {
+    if (step % 10 < 6) display.drawPixel(x0, y0, BLK);
+    if (x0 == x1 && y0 == y1) break;
+    int e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+    step++;
+  }
+}
+void kpiCard(int ry, const char* label, float v, int kind) {                // kind 0 = temperature, 1 = percent
+  display.drawRoundRect(580, ry, 196, 44, 8, BLK);
+  txt(592, ry + 15, &FreeSans9pt7b, label);
+  if (isnan(v)) { txt(592, ry + 39, &FreeSansBold12pt7b, "--"); return; }
+  if (kind == 0) tempStr(592, ry + 39, v, 1, &FreeSansBold12pt7b, 1, &FreeSansBold9pt7b, 3, 0);
+  else { char b[12]; snprintf(b, sizeof b, "%d %%", (int)lroundf(v)); txt(592, ry + 39, &FreeSansBold12pt7b, b); }
+}
+void drawHistory() {
+  struct tm now; bool haveTime = getLocalTime(&now, 0);
+  display.fillScreen(WHT); display.drawRect(0, 0, 792, 272, BLK); display.drawRect(1, 1, 790, 270, BLK);
+  drawHeader("History", 4);
+  if (!haveTime) { txt(396, 140, &FreeSansBold12pt7b, "No time yet", 1); txt(396, 170, &FreeSans9pt7b, "Set WIFI_SSID / WIFI_PASS in the sketch", 1); return; }
+  buildSeries(now);
+  bool vR = hvPreset == 0 || hvPreset == 1, vT = hvPreset == 0 || hvPreset == 2, vH = hvPreset == 0 || hvPreset == 3;
+
+  txt(16, 58, &FreeSansBold12pt7b, "Thermal dynamics");
+  const char* nt[3] = {"24 h, 30 min samples", "30 days, daily values", "6 months, monthly values"};
+  txt(252, 58, &FreeSans9pt7b, nt[hvRange]);
+  const char* rn[3] = {"24h", "30d", "6m"};
+  for (int i = 0; i < 3; i++) pill(590 + i * 58, 40, 54, 24, rn[i], hvRange == i);
+
+  float mn = 1e9f, mx = -1e9f, sr = 0, sh = 0, pk = -99; int cnt = 0;
+  for (int i = 0; i < gN; i++) if (gOK[i]) {
+    mn = min(mn, min(gR[i], gT[i])); mx = max(mx, max(gR[i], gT[i]));
+    sr += gR[i]; sh += gH[i]; pk = max(pk, gT[i]); cnt++;
+  }
+  kpiCard(74, "Room avg", cnt ? sr / cnt : NAN, 0);
+  kpiCard(122, "Peak target", cnt ? pk : NAN, 0);
+  kpiCard(170, "Avg heating", cnt ? sh / cnt : NAN, 1);
+
+  const int x0 = 64, x1 = 556, ty0 = 74, ty1 = 176, hy0 = 184, hy1 = 206, pw = x1 - x0, pt = ty1 - ty0, pl = hy1 - hy0;
+  int lo = 15, hi = 25, stp = 5;                                            // temperature axis fits the data (default 15-25 C)
+  if (mx >= mn) {
+    lo = 2 * (int)floorf((mn - 0.5f) / 2); hi = 2 * (int)ceilf((mx + 0.5f) / 2); stp = 2;
+    if (hi - lo < 6) hi = lo + 6;
+    if (hi - lo > 8) { stp = 5; lo = 5 * (int)floorf(lo / 5.0f); hi = 5 * (int)ceilf(hi / 5.0f); }
+  }
+  for (int v = lo; v <= hi; v += stp) {
+    int y = ty1 - (v - lo) * pt / (hi - lo); char b[8]; snprintf(b, sizeof b, "%d", v);
+    if (v > lo) for (int x = x0; x <= x1; x += 4) display.drawPixel(x, y, BLK);
+    txt(x0 - 8, y + 6, &FreeSans9pt7b, b, 2);
+  }
+  display.drawFastVLine(x0, ty0, hy1 - ty0 + 1, BLK);
+  display.drawFastHLine(x0, ty1, pw + 1, BLK); display.drawFastHLine(x0, hy1, pw + 1, BLK);
+  txt(x0 - 8, hy1 - 5, &FreeSans9pt7b, "Heat", 2);
+  float sw = (float)pw / gN;
+  auto xc = [&](int i) { return (int)(x0 + (i + 0.5f) * sw); };
+  auto yT = [&](float v) { return (int)(ty1 - (constrain(v, (float)lo, (float)hi) - lo) / (hi - lo) * pt); };
+  for (int k = 0; k < tkN; k++) { int x = xc(tkI[k]); display.drawFastVLine(x, hy1, 4, BLK); txt(x, hy1 + 22, &FreeSans9pt7b, tkS[k], 1); }
+
+  if (!cnt) {
+    txt(310, 128, &FreeSansBold12pt7b, "Collecting data...", 1);
+    txt(310, 154, &FreeSans9pt7b, hvRange == 0 ? "A sample is saved every 30 minutes" : "Daily values appear after the first full day", 1);
+  } else {
+    if (vH) { int bw = min(30, max(2, (int)(sw * 0.6f)));                    // heating: solid bars in their own lane
+      for (int i = 0; i < gN; i++) if (gOK[i] && gH[i] > 0) { int bh = max(2, (int)lroundf(gH[i] / 100.0f * pl)); display.fillRect(xc(i) - bw / 2, hy1 - bh, bw, bh, BLK); } }
+    const int markerEvery = max(1, (gN + 9) / 10); // keep markers readable at every history range
+    if (vT) for (int i = 1; i < gN; i++) if (gOK[i] && gOK[i - 1]) {
+      // Join target samples directly; staircase transitions created distracting full-height spikes.
+      dashSeg(xc(i - 1), yT(gT[i - 1]), xc(i), yT(gT[i]));
+    }
+    if (vR) for (int i = 1; i < gN; i++) if (gOK[i] && gOK[i - 1])
+      display.drawLine(xc(i - 1), yT(gR[i - 1]), xc(i), yT(gR[i]), BLK);
+    for (int i = 0; i < gN; i++) if (gOK[i] && (i % markerEvery == 0 || i == gN - 1)) {
+      if (vR) display.fillCircle(xc(i), yT(gR[i]), 2, BLK);
+      if (vT) { display.drawCircle(xc(i), yT(gT[i]), 2, BLK); display.drawPixel(xc(i), yT(gT[i]), WHT); }
+    }
+  }
+  pill(64, 238, 92, 24, "Room", vR); pill(162, 238, 100, 24, "Target", vT); pill(268, 238, 128, 24, "Heating %", vH);
+  txt(776, 255, &FreeSans9pt7b, "Up/Down: range   OK: series", 2);
+}
+
+void drawScreen() { if (screen == 0) drawUI(); else if (screen == 1) drawCalendar(); else if (screen == 2) drawTimetable(); else if (screen == 3) drawSettings(); else drawHistory(); }
+
+void drawCurrentHeader() {
+  if (screen == 0) drawHeader(ROOM_NAME, 0);
+  else if (screen == 1) drawHeader("Calendar", 1);
+  else if (screen == 2) drawHeader("Timetable", 2);
+  else if (screen == 3) drawHeader("Settings", 3);
+  else drawHeader("History", 4);
+}
+
+void partialRefresh(int x, int y, int w, int h, bool headerOnly) {
+  display.setPartialWindow(x, y, w, h);
+  display.firstPage();
+  do {
+    if (headerOnly) drawCurrentHeader();
+    else drawScreen(); // GxEPD2 clips these drawing calls to the partial window.
+  } while (display.nextPage());
+}
+
+void partialRefreshBody() {
+  if (screen == 0) {
+    // Temperature dial/target controls, status cards, and mode selector are separate regions.
+    partialRefresh(8, 34, 548, 176, false);
+    partialRefresh(576, 34, 208, 176, false);
+    partialRefresh(8, 212, 776, 50, false);
+  } else if (screen == 1) {
+    partialRefresh(244, 38, 320, 190, false);  // month label and day grid
+    partialRefresh(568, 38, 216, 224, false);  // weather and bookmarks
+  } else if (screen == 2) {
+    partialRefresh(8, 38, 532, 226, false);   // selected day's events
+    partialRefresh(540, 38, 244, 226, false);  // following day's events
+  } else if (screen == 3) {
+    int rows[2] = {setSel, lastSetSelDrawn};
+    for (int n = 0; n < 2; n++) {
+      int row = rows[n];
+      if (row < 0 || (n == 1 && row == rows[0])) continue;
+      int x = row < 5 ? 8 : 404, y = 60 + (row % 5) * 36;
+      partialRefresh(x, y, 380, 40, false);
+    }
+    partialRefresh(8, 244, 776, 22, false);    // instruction / reset prompt
+    lastSetSelDrawn = setSel;
+  } else {
+    partialRefresh(8, 34, 776, 34, false);      // title, subtitle and range buttons
+    partialRefresh(56, 38, 508, 190, false);   // graph and range controls
+    partialRefresh(576, 68, 208, 154, false);  // summary cards
+    partialRefresh(56, 230, 344, 34, false);   // series selectors
+    partialRefresh(400, 238, 384, 26, false);  // button hints
+  }
+}
 
 void refresh() {
   bool full = forceFull || partialCount >= 25;
-  if (full) { display.setFullWindow(); partialCount = 0; forceFull = false; }
-  else { display.setPartialWindow(0, 0, display.width(), display.height()); partialCount++; }
-  display.firstPage();
-  do { drawScreen(); } while (display.nextPage());
+  if (full) {
+    display.setFullWindow();
+    display.firstPage();
+    do { drawScreen(); } while (display.nextPage());
+    partialCount = 0;
+    forceFull = false;
+    headerDirty = false;
+    calendarClockDirty = false;
+    lastSetSelDrawn = setSel;
+  } else {
+    bool didPartial = dirty || calendarClockDirty || headerDirty;
+    if (dirty) partialRefreshBody();
+    if (calendarClockDirty && screen == 1) partialRefresh(44, 38, 152, 224, false);
+    if (headerDirty) partialRefresh(0, 0, 792, 34, true);
+    if (didPartial) partialCount++; // count logical updates, not each disjoint window
+    headerDirty = false;
+    calendarClockDirty = false;
+  }
   lastDraw = millis(); dirty = false;
 }
 
@@ -549,6 +862,8 @@ void initButtons() {
 void rotary(int up, int n) {          // up = +1 (rotary UP) or -1 (rotary DOWN)
   if (screen == 0) adjust(0.5f * up * n);                               // TRV: warmer / cooler
   else if (screen == 1) moveCursor(-up * n);                            // calendar: UP = previous day, DOWN = next day
+  else if (screen == 3) settingsRotary(up, n);
+  else if (screen == 4) historyRotary(up, n);                          // history: range                         // settings: select / change
   else { ttDay = constrain(ttDay - up * n, 0, 6); dirty = true; }       // timetable: previous / next day
 }
 void pollButtons() {
@@ -561,12 +876,17 @@ void pollButtons() {
       case B_DOWN: rotary(-1, n); break;
       case B_OK:   if (screen == 0) { mode = (mode + n) % 4; if (mode == 0) hasOvr = false; dirty = true; }
                    else if (screen == 1) { if (n & 1) toggleBm(); }       // calendar: bookmark the day
-                   else { nextIc = 0; }                                    // timetable: re-download the .ics now
+                   else if (screen == 2) { nextIc = 0; }
+                   else if (screen == 4) historyOK();
+                   else settingsOK();                                    // timetable: re-download the .ics now
                    break;
-      case B_MENU: for (uint8_t press = 0; press < n; press++) screen = screen == 0 ? 2 : (screen == 2 ? 1 : 0);
-                   forceFull = true; dirty = true; break;                         // one press opens timetable; next shows calendar
+      case B_MENU: if (screen == 3) { setEdit = false; resetArm = false; loadSettings(); }   // leaving settings drops unsaved edits
+                   for (uint8_t press = 0; press < n; press++) screen = NEXT_SCREEN[screen];
+                   forceFull = true; dirty = true; break;                         // TRV -> timetable -> calendar -> settings
       case B_EXIT: if (screen == 0) { if (n & 1) { winOpen = !winOpen; dirty = true; } }              // demo: window open
                    else if (screen == 1) setCursorToday();                                             // calendar: jump to today
+                   else if (screen == 3) exitSettings();
+                   else if (screen == 4) historyExit();
                    else { ttDay = 0; dirty = true; }                                                   // timetable: back to today
                    break;
     }
@@ -582,7 +902,7 @@ void pollButtons() {
 void setup() {
   Serial.begin(115200);
   pinMode(EPD_PWR, OUTPUT); digitalWrite(EPD_PWR, HIGH); delay(50);   // panel power rail
-  initButtons(); loadBookmarks();
+  initButtons(); loadBookmarks(); loadSettings(); loadHistory();
   SPI.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS);
   display.epd2.selectSPI(SPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
   display.init(115200, true, 2, false);
@@ -595,15 +915,25 @@ void loop() {
   pollButtons();
   readSensors();
   driveValve(valvePct());
+  historyTick();
   static uint32_t nextWx = 0;
   if (WiFi.status() == WL_CONNECTED && millis() >= nextWx) { bool ok = fetchWeather(); nextWx = millis() + (ok ? 1800000UL : 300000UL); if (ok && screen == 1) dirty = true; }
   if (strlen(ICAL_URL) && WiFi.status() == WL_CONNECTED && millis() >= nextIc) {
     struct tm tt; if (getLocalTime(&tt, 0)) { bool ok = fetchIcal(); nextIc = millis() + (ok ? 1800000UL : 300000UL); if (screen == 2) dirty = true; }
   }
   struct tm t;
-  if (getLocalTime(&t, 0) && t.tm_min != lastMin) { lastMin = t.tm_min; dirty = true; }   // clock tick
+  if (getLocalTime(&t, 0) && t.tm_min != lastMin) {
+    static float lastScheduledTarget = NAN;
+    lastMin = t.tm_min;
+    headerDirty = true;
+    if (screen == 1) calendarClockDirty = true;   // only its hands and digital clock change each minute
+    if (screen == 2) dirty = true;                // live timetable status also changes
+    float scheduledTarget = eff();
+    if (screen == 0 && (isnan(lastScheduledTarget) || fabsf(scheduledTarget - lastScheduledTarget) >= 0.05f)) dirty = true;
+    lastScheduledTarget = scheduledTarget;
+  }
   static int lv = -1; static float lc = -99;
   if (valvePct() != lv || fabs(cur - lc) >= 0.1) { lv = valvePct(); lc = cur; if (millis() - lastDraw > 30000) dirty = true; }
-  if (dirty && millis() - lastDraw > 300) refresh();       // presses made during a refresh are queued by the ISRs
+  if ((dirty || headerDirty) && millis() - lastDraw > 300) refresh(); // presses made during refresh are queued by ISRs
   delay(20);
 }
