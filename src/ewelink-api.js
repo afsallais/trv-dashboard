@@ -246,20 +246,27 @@ export async function onRequest({ request, env }) {
       await env.EWELINK_KV.put('location_automation:last', JSON.stringify(event), { expirationTtl: 60 * 60 * 24 * 30 });
       const missing = ['EWELINK_APP_ID', 'EWELINK_APP_SECRET', 'EWELINK_ACCOUNT', 'EWELINK_PASSWORD', 'EWELINK_KV', 'EWELINK_TRV_DEVICE_ID', 'EWELINK_CONTROL_FIELDS'].filter(key => !env[key]);
       if (missing.length) return json({ error: `Location control setup is incomplete: ${missing.join(', ')}.` }, 503);
-      const target = Number(input.action === 'home' ? env.LOCATION_HOME_TEMPERATURE : env.LOCATION_AWAY_TEMPERATURE);
-      if (!Number.isFinite(target) || target < 5 || target > 30 || Math.abs(target * 2 - Math.round(target * 2)) > 1e-8) return json({ error: `Set a valid ${input.action} temperature (5–30 °C in 0.5 °C steps) in Worker variables.` }, 503);
+      const target = input.action === 'home' ? Number(env.LOCATION_HOME_TEMPERATURE) : null;
+      if (input.action === 'home' && (!Number.isFinite(target) || target < 5 || target > 30 || Math.abs(target * 2 - Math.round(target * 2)) > 1e-8)) return json({ error: 'Set a valid home temperature (5–30 °C in 0.5 °C steps) in Worker variables.' }, 503);
       const list = await apiWithAuth(env, '/v2/device/thing?lang=en&num=0');
       const entry = (list.thingList || []).find(item => [1, 2].includes(item.itemType) && (item.itemData?.deviceid || item.itemData?.id) === env.EWELINK_TRV_DEVICE_ID);
       if (!entry) return json({ error: 'Configured TRV device was not found in this eWeLink account.' }, 404);
       const device = normalizeDevice(entry, entry.itemData?.params || {});
       if (device.kind !== 'valve') return json({ error: 'Configured device is not recognized as a TRV.' }, 409);
       const profile = configuredProfile(env, device);
-      const field = profile.temperature;
-      const key = typeof field === 'string' ? field : field?.key;
-      if (!key) return json({ error: `TRV temperature field has not been verified for ${device.model}.` }, 409);
-      const value = typeof field === 'object' && field.scale ? target * Number(field.scale) : target;
-      await apiWithAuth(env, '/v2/device/thing/status', { method: 'POST', body: { type: 1, id: env.EWELINK_TRV_DEVICE_ID, params: { [key]: value } } });
-      return json({ ok: true, action: input.action, target_temperature: target });
+      const params = {};
+      if (input.action === 'away') {
+        const mode = profile.mode;
+        if (!mode?.key || !mode.values || mode.values.off === undefined) return json({ error: `TRV Off mode has not been verified for ${device.model}.` }, 409);
+        params[mode.key] = mode.values.off;
+      } else {
+        const field = profile.temperature;
+        const key = typeof field === 'string' ? field : field?.key;
+        if (!key) return json({ error: `TRV temperature field has not been verified for ${device.model}.` }, 409);
+        params[key] = typeof field === 'object' && field.scale ? target * Number(field.scale) : target;
+      }
+      await apiWithAuth(env, '/v2/device/thing/status', { method: 'POST', body: { type: 1, id: env.EWELINK_TRV_DEVICE_ID, params } });
+      return json({ ok: true, action: input.action, ...(target === null ? { mode: 'off' } : { target_temperature: target }) });
     }
     if (route === '/api/location/status' && request.method === 'GET') {
       if (!await verifySession(request, env)) return json({ error: 'Sign in to the private dashboard first.' }, 401);

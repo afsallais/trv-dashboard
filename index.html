@@ -142,8 +142,8 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
   <div class="step"><button id="m">−</button><button id="p">+</button></div>
   <div style="height:14px"></div>
   <div class="preset-grid" aria-label="Quick temperature presets">
-    <button type="button" class="preset-card" data-preset="away" aria-label="Away preset: valve off, 15 degrees">
-      <span class="preset-icon" aria-hidden="true">✈️</span><span class="preset-name">Away</span><span class="preset-temp mono">15.0°</span>
+    <button type="button" class="preset-card" data-preset="away" aria-label="Away preset: turn the valve off">
+      <span class="preset-icon" aria-hidden="true">✈️</span><span class="preset-name">Away</span><span class="preset-temp mono">OFF</span>
     </button>
     <button type="button" class="preset-card" data-preset="sleep" aria-label="Sleep preset: 17.5 degrees">
       <span class="preset-icon" aria-hidden="true">🌙</span><span class="preset-name">Sleep</span><span class="preset-temp mono">17.5°</span>
@@ -251,8 +251,8 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
   <p class="lbl"><span>iPhone location automation</span><span>via dashboard</span></p>
   <p class="d">Your iPhone can call one protected Cloudflare Worker URL when you arrive or leave. The Worker sends a preset temperature command directly through the dashboard’s eWeLink connection; the Shortcut cannot choose another device or temperature.</p>
   <ol class="d" style="padding-left:22px;line-height:1.65">
-    <li>First configure a verified writable temperature field for this TRV in <code>EWELINK_CONTROL_FIELDS</code>. The API must already be authorized and working for the dashboard.</li>
-    <li>In Cloudflare Worker settings, set <code>EWELINK_TRV_DEVICE_ID</code>, <code>LOCATION_HOME_TEMPERATURE</code>, and <code>LOCATION_AWAY_TEMPERATURE</code>. Add <code>LOCATION_AUTOMATION_TOKEN</code> as a private random token of at least 32 characters.</li>
+    <li>First configure verified writable temperature and Off mode fields for this TRV in <code>EWELINK_CONTROL_FIELDS</code>. The API must already be authorized and working for the dashboard.</li>
+    <li>In Cloudflare Worker settings, set <code>EWELINK_TRV_DEVICE_ID</code> and <code>LOCATION_HOME_TEMPERATURE</code>. Add <code>LOCATION_AUTOMATION_TOKEN</code> as a private random token of at least 32 characters. Away sends Off mode without a temperature setpoint.</li>
     <li>On iPhone, create Shortcuts <b>Leave</b> and <b>Arrive</b> automations. Each uses <b>Get Contents of URL</b> with method POST to <code>https://YOUR-WORKER-URL/api/location</code>, header <code>Authorization: Bearer YOUR-TOKEN</code>, and JSON body <code>{"action":"away"}</code> or <code>{"action":"home"}</code>.</li>
     <li>Test each request from Shortcuts, then verify the TRV target in eWeLink. Keep the token private; it can change the TRV target.</li>
   </ol>
@@ -382,10 +382,10 @@ for(let t=MIN;t<=MAX;t+=0.5){const a=ang(t),big=t%5===0,mid=Number.isInteger(t);
 for(let t=5;t<=30;t+=5){const[x,y]=pt(ang(t),104);h+=`<text x="${x}" y="${y+3}" text-anchor="middle" font-size="9" fill="var(--mute)" font-family="monospace">${t}</text>`}
 h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3" style="transition:cx .16s ease,cy .16s ease"/>';
 svg.innerHTML=h;
-const quickPresets={away:{label:'Away',mode:'off',temperature:15},sleep:{label:'Sleep',mode:'heat',temperature:17.5},eco:{label:'Eco',mode:'heat',temperature:19.5},comfort:{label:'Comfort',mode:'heat',temperature:21}};
-function presetAvailable(preset){if(!S.local)return true;if(!S.connected)return false;if(cloudMode)return S.cloudControls.includes('temperature')&&S.cloudControls.includes('mode')&&S.hvacModes.includes(preset.mode);return S.hvacModes.includes(preset.mode)}
+const quickPresets={away:{label:'Away',mode:'off',temperature:null},sleep:{label:'Sleep',mode:'heat',temperature:17.5},eco:{label:'Eco',mode:'heat',temperature:19.5},comfort:{label:'Comfort',mode:'heat',temperature:21}};
+function presetAvailable(preset){if(!S.local)return true;if(!S.connected)return false;if(cloudMode)return S.cloudControls.includes('mode')&&S.hvacModes.includes(preset.mode)&&(preset.temperature===null||S.cloudControls.includes('temperature'));return S.hvacModes.includes(preset.mode)}
 function syncPresetCards(){const active=S.mode==='off'?'away':S.mode==='heat'?Object.keys(quickPresets).find(key=>key!=='away'&&Math.abs(S.t-quickPresets[key].temperature)<.01):null;document.querySelectorAll('.preset-card').forEach(button=>{const key=button.dataset.preset;button.classList.toggle('active',key===active);button.setAttribute('aria-pressed',String(key===active));button.disabled=!presetAvailable(quickPresets[key])});$('presetStatus').textContent=S.local&&!S.connected?'Connect to the live TRV before using presets.':S.connected?'Presets send commands to the connected TRV.':'Preview only · presets won’t be sent to the valve.'}
-function applyPreset(key){const preset=quickPresets[key];if(!preset)return;if(!presetAvailable(preset)){setConnection('This preset needs verified live temperature and mode controls.',false);return}S.t=preset.temperature;S.mode=preset.mode;paint();if(S.connected)sendControl({temperature:preset.temperature,mode:preset.mode});else setConnection(`Preview only · ${preset.label} would set ${preset.mode==='off'?'Off':'Manual'} at ${preset.temperature.toFixed(1)} °C; no command sent.`,false)}
+function applyPreset(key){const preset=quickPresets[key];if(!preset)return;if(!presetAvailable(preset)){setConnection('This preset needs verified live controls.',false);return}if(preset.temperature!==null)S.t=preset.temperature;S.mode=preset.mode;paint();if(S.connected)sendControl(preset.temperature===null?{mode:preset.mode}:{temperature:preset.temperature,mode:preset.mode});else setConnection(`Preview only · ${preset.label} would ${preset.mode==='off'?'turn the valve off':`set ${preset.temperature.toFixed(1)} °C in Manual mode`}; no command sent.`,false)}
 function paint(){
  const a=ang(S.t);
  document.querySelectorAll('.tk').forEach(l=>{const t=+l.dataset.t;l.setAttribute('stroke',t<=S.t?(S.mode==='off'?'var(--mute)':'var(--heat)'):'var(--line)')});

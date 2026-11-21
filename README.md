@@ -41,7 +41,7 @@ This project does not use Firebase or Firestore. Keep any Firestore database rul
 
 ## iPhone location automation through the dashboard
 
-The iPhone can call the Worker directly. `POST /api/location` accepts only `{ "action": "home" }` or `{ "action": "away" }`; the Worker maps these to two preset temperatures and sends the command through the same eWeLink API connection as the dashboard. It does not accept a device ID or arbitrary temperature from the phone. The dashboard's Settings page shows the most recent authenticated request; `GET /api/location/status` requires a signed-in dashboard session and reads the event from KV.
+The iPhone can call the Worker directly. `POST /api/location` accepts only `{ "action": "home" }` or `{ "action": "away" }`; Away sends only the verified Off mode command, while Home sets the configured home temperature through the same eWeLink API connection as the dashboard. It does not accept a device ID or arbitrary temperature from the phone. The dashboard's Settings page shows the most recent authenticated request; `GET /api/location/status` requires a signed-in dashboard session and reads the event from KV.
 
 Configure these Cloudflare Worker values:
 
@@ -50,7 +50,6 @@ Configure these Cloudflare Worker values:
 | `LOCATION_AUTOMATION_TOKEN` | Secret | Random private token, at least 32 characters; Shortcuts sends it as a Bearer authorization header. |
 | `EWELINK_TRV_DEVICE_ID` | Variable/secret | Device ID of the paired TRV in your eWeLink account. |
 | `LOCATION_HOME_TEMPERATURE` | Variable | Home setpoint in °C, 5–30 in 0.5 °C steps. |
-| `LOCATION_AWAY_TEMPERATURE` | Variable | Away setpoint in °C, 5–30 in 0.5 °C steps. |
 
 The dashboard must already have valid eWeLink API credentials and a verified writable temperature mapping in `EWELINK_CONTROL_FIELDS`. This endpoint does not bypass the developer APPID requirement or guess the TRV's protocol fields. Set an away value that suits your home and frost-protection needs. Keep the token private; anyone with it can switch between the two preset temperatures.
 
@@ -58,7 +57,7 @@ On iPhone Shortcuts, create one **Leave** and one **Arrive** personal automation
 
 ## Quick temperature presets
 
-The Room screen includes Away (Off mode with a 15 °C setpoint), Sleep (17.5 °C), Eco (19.5 °C), and Comfort (21 °C). Sleep, Eco, and Comfort request Manual/Heat mode with the preset temperature. In live mode, a preset is enabled only when both temperature and mode fields are configured and verified for the device. Preview mode updates the simulated UI only.
+The Room screen includes Away (Off mode, with no setpoint change), Sleep (17.5 °C), Eco (19.5 °C), and Comfort (21 °C). Sleep, Eco, and Comfort request Manual/Heat mode with the preset temperature. In live mode, Away requires a verified mode field; temperature presets require verified temperature and mode fields. Preview mode updates the simulated UI only.
 
 ## Verify the device-specific commands after pairing
 
