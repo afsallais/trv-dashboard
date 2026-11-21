@@ -261,6 +261,13 @@ select,input[type=time],input[type=number]{width:100%;border:1px solid var(--lin
 
 </section>
 <section class="card">
+  <p class="lbl">Temperature presets</p>
+  <p class="d">Choose the setpoints used by the Sleep, Eco, and Comfort presets. Changes are saved in this browser.</p>
+  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Sleep <span class="mono val" id="sleepPresetValue">17.5 °C</span></p><input type="range" min="5" max="30" step="0.5" value="17.5" data-preset-temperature="sleep" aria-label="Sleep preset temperature"></div>
+  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Eco <span class="mono val" id="ecoPresetValue">19.5 °C</span></p><input type="range" min="5" max="30" step="0.5" value="19.5" data-preset-temperature="eco" aria-label="Eco preset temperature"></div>
+  <div class="row" style="display:block"><p class="t" style="display:flex;justify-content:space-between">Comfort <span class="mono val" id="comfortPresetValue">21.0 °C</span></p><input type="range" min="5" max="30" step="0.5" value="21" data-preset-temperature="comfort" aria-label="Comfort preset temperature"></div>
+</section>
+<section class="card">
   <p class="lbl">Safeguards</p>
   <div class="row"><div><p class="t">Child lock</p><p class="d">Disables the knob and buttons on the valve</p></div><button class="sw" data-k="child"></button></div>
   <div class="row"><div><p class="t">Open‑window detection</p><p class="d">Shuts the valve if temperature drops over 1.5 °C in 5 min</p></div><button class="sw on" data-k="ow"></button></div>
@@ -383,8 +390,12 @@ for(let t=5;t<=30;t+=5){const[x,y]=pt(ang(t),104);h+=`<text x="${x}" y="${y+3}" 
 h+='<path id="room" fill="var(--cool)"/><circle id="knob" r="9" fill="var(--panel)" stroke="var(--heat)" stroke-width="3" style="transition:cx .16s ease,cy .16s ease"/>';
 svg.innerHTML=h;
 const quickPresets={away:{label:'Away',mode:'off',temperature:null},sleep:{label:'Sleep',mode:'heat',temperature:17.5},eco:{label:'Eco',mode:'heat',temperature:19.5},comfort:{label:'Comfort',mode:'heat',temperature:21}};
+const presetTemperatureStorageKey='trvPresetTemperatures';
+try{const saved=JSON.parse(localStorage.getItem(presetTemperatureStorageKey)||'{}');for(const key of ['sleep','eco','comfort']){const value=Number(saved[key]);if(Number.isFinite(value)&&value>=MIN&&value<=MAX&&Math.abs(value*2-Math.round(value*2))<1e-8)quickPresets[key].temperature=value}}catch{}
+function syncPresetTemperatureSettings(){for(const key of ['sleep','eco','comfort']){const value=quickPresets[key].temperature,input=document.querySelector(`[data-preset-temperature="${key}"]`),output=$(`${key}PresetValue`);if(input)input.value=String(value);if(output)output.textContent=value.toFixed(1)+' °C'}}
+function savePresetTemperature(key,value){if(!quickPresets[key]||key==='away')return;quickPresets[key].temperature=Math.round(Math.min(MAX,Math.max(MIN,value))*2)/2;try{localStorage.setItem(presetTemperatureStorageKey,JSON.stringify({sleep:quickPresets.sleep.temperature,eco:quickPresets.eco.temperature,comfort:quickPresets.comfort.temperature}))}catch{}syncPresetTemperatureSettings();syncPresetCards()}
 function presetAvailable(preset){if(!S.local)return true;if(!S.connected)return false;if(cloudMode)return S.cloudControls.includes('mode')&&S.hvacModes.includes(preset.mode)&&(preset.temperature===null||S.cloudControls.includes('temperature'));return S.hvacModes.includes(preset.mode)}
-function syncPresetCards(){const active=S.mode==='off'?'away':S.mode==='heat'?Object.keys(quickPresets).find(key=>key!=='away'&&Math.abs(S.t-quickPresets[key].temperature)<.01):null;document.querySelectorAll('.preset-card').forEach(button=>{const key=button.dataset.preset;button.classList.toggle('active',key===active);button.setAttribute('aria-pressed',String(key===active));button.disabled=!presetAvailable(quickPresets[key])});$('presetStatus').textContent=S.local&&!S.connected?'Connect to the live TRV before using presets.':S.connected?'Presets send commands to the connected TRV.':'Preview only · presets won’t be sent to the valve.'}
+function syncPresetCards(){const active=S.mode==='off'?'away':S.mode==='heat'?Object.keys(quickPresets).find(key=>key!=='away'&&Math.abs(S.t-quickPresets[key].temperature)<.01):null;document.querySelectorAll('.preset-card').forEach(button=>{const key=button.dataset.preset,preset=quickPresets[key];button.classList.toggle('active',key===active);button.setAttribute('aria-pressed',String(key===active));button.disabled=!presetAvailable(preset);if(preset.temperature!==null){button.querySelector('.preset-temp').textContent=preset.temperature.toFixed(1)+'°';button.setAttribute('aria-label',`${preset.label} preset: ${preset.temperature.toFixed(1)} degrees`)}});$('presetStatus').textContent=S.local&&!S.connected?'Connect to the live TRV before using presets.':S.connected?'Presets send commands to the connected TRV.':'Preview only · presets won’t be sent to the valve.'}
 function applyPreset(key){const preset=quickPresets[key];if(!preset)return;if(!presetAvailable(preset)){setConnection('This preset needs verified live controls.',false);return}if(preset.temperature!==null)S.t=preset.temperature;S.mode=preset.mode;paint();if(S.connected)sendControl(preset.temperature===null?{mode:preset.mode}:{temperature:preset.temperature,mode:preset.mode});else setConnection(`Preview only · ${preset.label} would ${preset.mode==='off'?'turn the valve off':`set ${preset.temperature.toFixed(1)} °C in Manual mode`}; no command sent.`,false)}
 function paint(){
  const a=ang(S.t);
@@ -414,6 +425,7 @@ dw.addEventListener('pointerup',()=>drag=false);
 $('m').onclick=()=>setT(S.t-0.5);$('p').onclick=()=>setT(S.t+0.5);
 document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{if(S.local&&!S.hvacModes.includes(b.dataset.m))return;S.mode=b.dataset.m;paint();if(S.connected)sendControl({mode:S.mode})});
 document.querySelectorAll('.preset-card').forEach(button=>button.onclick=()=>applyPreset(button.dataset.preset));
+syncPresetTemperatureSettings();document.querySelectorAll('[data-preset-temperature]').forEach(input=>input.oninput=event=>savePresetTemperature(input.dataset.presetTemperature,Number(event.target.value)));
 document.querySelectorAll('.sw').forEach(b=>{b.onclick=()=>{if(b.id==='boost'){toggleBoost();return}S[b.dataset.k]=!S[b.dataset.k];b.classList.toggle('on',S[b.dataset.k]);paint();if(b.dataset.k==='smart')updatePidControls()}});
 const bind=(id,out,f)=>$(id).oninput=e=>{$(out).textContent=f(+e.target.value)};
 bind('fr','frv',v=>v.toFixed(1)+' °C');bind('ex','exv',v=>v.toFixed(1)+' °C');
