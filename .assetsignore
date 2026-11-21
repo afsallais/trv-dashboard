@@ -3,6 +3,9 @@ functions/
 src/
 wrangler.jsonc
 server.js
+*.ino
+secrets.h
+secrets.example.h
 package.json
 .gitignore
 .assetsignore

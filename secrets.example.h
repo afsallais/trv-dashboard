@@ -1,0 +1,10 @@
+#pragma once
+
+// Copy this file to secrets.h and fill in your private values.
+#define WIFI_SSID "YOUR_HOME_WIFI_NAME"
+#define WIFI_PASS "YOUR_HOME_WIFI_PASSWORD"
+#define DASHBOARD_WORKER_URL "https://YOUR-WORKER.workers.dev"
+#define EINK_DEVICE_TOKEN "PASTE_THE_SAME_PRIVATE_TOKEN_CONFIGURED_IN_CLOUDFLARE"
+#define TRV_DEVICE_ID "PASTE_THE_TRV_DEVICE_ID_CONFIGURED_IN_CLOUDFLARE"
+#define ICAL_URL ""
+

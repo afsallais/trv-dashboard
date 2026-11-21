@@ -1,5 +1,6 @@
 .env.local
 .dev.vars
+secrets.h
 .wrangler/
 node_modules/
 npm-debug.log*

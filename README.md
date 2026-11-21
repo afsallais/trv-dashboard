@@ -29,6 +29,7 @@ This repository has an explicit `wrangler.jsonc` Worker configuration. It resolv
    | `EWELINK_COUNTRY_CODE` | Variable | Optional; defaults to `+31`. |
    | `EWELINK_REGION` | Variable | Optional; defaults to `eu`. |
    | `EWELINK_CONTROL_FIELDS` | Secret/variable | Optional model-specific fields, only after verification. Leave unset initially. |
+   | `EINK_DEVICE_TOKEN` | Secret | Random private token of at least 32 characters for the e-paper panel's read-only device feed and single-TRV controls. |
 
 4. Open the Worker URL and sign in with `DASHBOARD_PASSWORD`. The API session is an HTTP-only, same-site cookie; failed passwords are rate-limited using KV. The eWeLink password and tokens stay in the Worker and KV, not in the browser or repository.
 5. In the eWeLink app, set up the ZBBridge-P, update its firmware, then add each Zigbee device to that bridge. In the dashboard, use **Sensors → Refresh devices**. The bridge, TRV, and sensors must be visible in the eWeLink account associated with the API credentials.
@@ -54,6 +55,18 @@ Configure these Cloudflare Worker values:
 The dashboard must already have valid eWeLink API credentials and a verified writable temperature mapping in `EWELINK_CONTROL_FIELDS`. This endpoint does not bypass the developer APPID requirement or guess the TRV's protocol fields. Set an away value that suits your home and frost-protection needs. Keep the token private; anyone with it can switch between the two preset temperatures.
 
 On iPhone Shortcuts, create one **Leave** and one **Arrive** personal automation. Add **Get Contents of URL** using `https://YOUR-WORKER-URL/api/location`, method **POST**, header `Authorization: Bearer YOUR_TOKEN`, and JSON request body `{ "action": "away" }` for Leave or `{ "action": "home" }` for Arrive. Test both calls manually first and confirm the target changes in eWeLink. The ZBBridge-P must be powered and online. See [Apple's travel-trigger guide](https://support.apple.com/guide/shortcuts/travel-triggers-apd8ebfc4e8e/ios).
+
+## Connect the CrowPanel e-paper device
+
+The firmware's TRV screen and device list use the same Cloudflare Worker and eWeLink connection as this dashboard; they are no longer simulated. The panel polls `GET /api/eink/state` once per minute and sends setpoint/mode changes to `POST /api/eink/control`. Reads include the configured TRV and paired temperature/contact devices; write requests cannot supply another device ID and are limited to the `EWELINK_TRV_DEVICE_ID` configured in the Worker.
+
+1. In Cloudflare Worker settings, set `EINK_DEVICE_TOKEN` as a **Secret**. Use a different random token of at least 32 characters from the iPhone location token.
+2. In the firmware folder, copy `secrets.example.h` to `secrets.h`. Enter the home's Wi-Fi name/password, the Worker base URL (no trailing slash), the same e-paper token, and the TRV device ID. `secrets.h` is ignored by Git and must not be committed. The firmware binary contains the token, so only install it on a panel you control.
+3. Install the Arduino Library Manager dependency **ArduinoJson** alongside GxEPD2 and Adafruit GFX. Use an ESP32 Arduino core version that supports `WiFiClientSecure::useBuiltinCACertBundle()` so Worker TLS certificates are checked.
+4. Configure a verified `temperature` and `mode.heat` mapping for the exact TRV model in `EWELINK_CONTROL_FIELDS`. The panel displays an error instead of claiming a command worked if the Worker has no verified writable field.
+5. Deploy the Worker, compile/upload `trv_crowpanel_579.ino`, and use the **Devices** screen to confirm reported readings. On its first successful connection after boot, the panel applies the current local schedule setpoint to the configured TRV in verified Heat mode. Later schedule boundaries and Eco/Sleep/Comfort/Frost selections also send their setpoint through the Worker. These schedule/preset values are stored on the panel, not synchronized with the dashboard. The iCalendar screen remains a timetable viewer. Sensor-to-TRV window linkage must still be configured in eWeLink as described below.
+
+The cloud API controls temperature and verified modes only. Valve position, battery, sensor, tamper, and window readings appear only when eWeLink includes them and the device profile maps any model-specific fields. The panel cannot reproduce undocumented TRV controls or invent missing telemetry.
 
 ## Quick temperature presets
 
@@ -115,5 +128,6 @@ The API supports cloud control and device polling, not a direct browser-to-Zigbe
 - `index.html` — dashboard UI, demo mode on GitHub Pages and cloud-connected status/controls on the Worker.
 - `src/worker.js` — Cloudflare Worker entry point.
 - `src/ewelink-api.js` — protected API for dashboard sessions, eWeLink authentication, device discovery/status, and verified-field TRV writes.
+- `trv_crowpanel_579.ino` — CrowPanel firmware using protected Worker device endpoints; copy `secrets.example.h` to ignored `secrets.h` for local credentials.
 - `wrangler.jsonc` — Worker name, static assets, and KV binding.
 - `server.js` — legacy local Home Assistant prototype.

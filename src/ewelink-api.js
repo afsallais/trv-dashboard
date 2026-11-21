@@ -225,11 +225,73 @@ function sameOrigin(request) {
   return !origin || origin === new URL(request.url).origin;
 }
 
+function verifyEinkToken(request, env) {
+  const token = env.EINK_DEVICE_TOKEN;
+  if (!token || token.length < 32) return false;
+  const authorization = request.headers.get('Authorization') || '';
+  const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  return constantTimeEqual(supplied, token);
+}
+
+async function einkState(env) {
+  if (!env.EWELINK_TRV_DEVICE_ID) throw new Error('Cloudflare setup is incomplete: EWELINK_TRV_DEVICE_ID.');
+  const devices = await allDevices(env);
+  const visible = devices.filter(device => device.id === env.EWELINK_TRV_DEVICE_ID
+    || ['temperature', 'contact'].includes(device.kind) || device.battery !== null);
+  return visible.map(({ id, name, model, kind, online, temperature, target_temperature, humidity,
+    battery, contact, tamper, valve_position, state, status_error }) => ({
+    id, name, model, kind, online, temperature, target_temperature, humidity,
+    battery, contact, tamper, valve_position, state, status_error,
+  }));
+}
+
 export async function onRequest({ request, env }) {
   const route = new URL(request.url).pathname;
   try {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'Allow': 'GET,POST,OPTIONS', 'Cache-Control': 'no-store' } });
     if (!sameOrigin(request)) return json({ error: 'Cross-origin requests are not allowed.' }, 403);
+    if (route === '/api/eink/state' && request.method === 'GET') {
+      if (!env.EINK_DEVICE_TOKEN || env.EINK_DEVICE_TOKEN.length < 32) return json({ error: 'EINK_DEVICE_TOKEN must be configured as a secret with at least 32 characters.' }, 503);
+      if (!verifyEinkToken(request, env)) return json({ error: 'Unauthorized.' }, 401);
+      requireConfig(env);
+      return json({ provider: 'ewelink', updated_at: new Date().toISOString(), devices: await einkState(env) });
+    }
+    if (route === '/api/eink/control' && request.method === 'POST') {
+      if (!env.EINK_DEVICE_TOKEN || env.EINK_DEVICE_TOKEN.length < 32) return json({ error: 'EINK_DEVICE_TOKEN must be configured as a secret with at least 32 characters.' }, 503);
+      if (!verifyEinkToken(request, env)) return json({ error: 'Unauthorized.' }, 401);
+      requireConfig(env);
+      if (!env.EWELINK_TRV_DEVICE_ID) return json({ error: 'EWELINK_TRV_DEVICE_ID is not configured.' }, 503);
+      const raw = await request.text();
+      if (raw.length > 512) return json({ error: 'Request is too large.' }, 413);
+      let input;
+      try { input = JSON.parse(raw); } catch { return json({ error: 'Send a JSON temperature or mode.' }, 400); }
+      if (!input || typeof input !== 'object' || Array.isArray(input)) return json({ error: 'Send a JSON temperature or mode object.' }, 400);
+      const list = await apiWithAuth(env, '/v2/device/thing?lang=en&num=0');
+      const entry = (list.thingList || []).find(item => [1, 2].includes(item.itemType)
+        && (item.itemData?.deviceid || item.itemData?.id) === env.EWELINK_TRV_DEVICE_ID);
+      if (!entry) return json({ error: 'Configured TRV was not found in this eWeLink account.' }, 404);
+      const device = normalizeDevice(entry, entry.itemData?.params || {});
+      if (device.kind !== 'valve') return json({ error: 'Configured device is not recognized as a TRV.' }, 409);
+      const profile = configuredProfile(env, device), params = {};
+      if (Object.hasOwn(input, 'temperature')) {
+        const field = profile.temperature;
+        const key = typeof field === 'string' ? field : field?.key;
+        const value = Number(input.temperature);
+        if (!key) return json({ error: `TRV temperature field has not been verified for ${device.model}.` }, 409);
+        if (!Number.isFinite(value) || value < 5 || value > 30 || Math.abs(value * 2 - Math.round(value * 2)) > 1e-8)
+          return json({ error: 'Temperature must be 5–30 °C in 0.5 °C steps.' }, 400);
+        params[key] = typeof field === 'object' && field.scale ? value * Number(field.scale) : value;
+      }
+      if (Object.hasOwn(input, 'mode')) {
+        if (input.mode !== 'heat') return json({ error: 'The e-paper panel can only request verified Heat mode.' }, 400);
+        const mode = profile.mode, value = mode?.values?.heat;
+        if (!mode?.key || value === undefined) return json({ error: `TRV Heat mode has not been verified for ${device.model}.` }, 409);
+        params[mode.key] = value;
+      }
+      if (!Object.keys(params).length) return json({ error: 'Provide a supported temperature or mode.' }, 400);
+      await apiWithAuth(env, '/v2/device/thing/status', { method: 'POST', body: { type: 1, id: env.EWELINK_TRV_DEVICE_ID, params } });
+      return json({ ok: true });
+    }
     if (route === '/api/location' && request.method === 'POST') {
       const token = env.LOCATION_AUTOMATION_TOKEN;
       if (!token || token.length < 32) return json({ error: 'Location automation is not configured.' }, 503);

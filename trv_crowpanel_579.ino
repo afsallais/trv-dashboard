@@ -1,12 +1,12 @@
 /*
   TRV UI for Elecrow CrowPanel ESP32-S3 5.79" e-paper (792x272, dual SSD1683)
-  Libraries (Library Manager): "GxEPD2" (ZinggJM, latest) and "Adafruit GFX Library"
+  Libraries (Library Manager): "GxEPD2", "Adafruit GFX Library", and "ArduinoJson"
   Board: ESP32S3 Dev Module | Flash 8MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
 
   Buttons (pins from the Elecrow docs, active-LOW, interrupt driven):
-            MENU (IO2) = switch screen: TRV -> Timetable -> Calendar -> Settings -> History
+            MENU (IO2) = switch screen: TRV -> Timetable -> Calendar -> Settings -> History -> Devices
             TRV screen:      ROTARY UP (IO6) / DOWN (IO4) = target +/- 0.5 C (hold = repeat)
-                             ROTARY PRESS (IO5) = next mode      EXIT (IO1) = toggle "window open" (demo)
+                             ROTARY PRESS (IO5) = next temperature preset      EXIT (IO1) = refresh cloud state
             Calendar screen: ROTARY UP / DOWN = previous / next day (hold = repeat)
                              ROTARY PRESS = bookmark / un-bookmark the day (saved in flash)
                              EXIT = jump to today.
@@ -14,13 +14,14 @@
             Settings screen: ROTARY UP / DOWN = select item, OK = edit / save the value, EXIT = cancel edit or back to TRV.
                              Values are saved in flash. "Reset defaults" needs OK twice.
             History screen:  ROTARY UP / DOWN = range 24h / 30d / 6m, OK = show all / room / target / heating only, EXIT = reset view.
-                             Logs room temp, target and valve opening itself (needs Wi-Fi time): 24 h in RAM, daily records in flash.
+                             Logs verified cloud room temp, target and valve opening (24 h in RAM, daily records in flash).
+            Devices screen: shows latest eWeLink TRV / sensor readings and reported battery levels; OK = refresh.
             Presses are also logged on Serial (115200).
   Timetable: paste your .ics / webcal link into ICAL_URL (DTSTART/DTEND, SUMMARY, LOCATION, weekly/daily RRULE + EXDATE supported;
   floating or Z times; zone-specific TZID times are read as local time).
   Calendar needs Wi-Fi for the date/time (NTP) and weather (Open-Meteo, set WX_CITY/WX_LAT/WX_LON; now Delft, NL).
-  Sensor + valve motor are simulated (USE_SIM 1). Replace readSensors() / driveValve()
-  with your real hardware (e.g. SHT4x / AHT20 on the header pins, motor driver).
+  Live TRV and Zigbee state/control come from the paired dashboard Worker. Install secrets.h
+  from secrets.example.h and configure the Worker URL, device token, and Wi-Fi credentials.
 */
 #include <Arduino.h>
 #include <WiFi.h>
@@ -29,6 +30,7 @@
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 #include <GxEPD2_BW.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
@@ -37,12 +39,29 @@
 #include <Fonts/FreeSansBold24pt7b.h>
 
 // ---------- user settings ----------
-#define USE_SIM 1
-const char* WIFI_SSID = "";            // leave empty = no Wi-Fi/NTP (clock shows --:--)
-const char* WIFI_PASS = "";
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#ifndef WIFI_SSID
+#define WIFI_SSID ""
+#endif
+#ifndef WIFI_PASS
+#define WIFI_PASS ""
+#endif
+#ifndef DASHBOARD_WORKER_URL
+#define DASHBOARD_WORKER_URL ""
+#endif
+#ifndef EINK_DEVICE_TOKEN
+#define EINK_DEVICE_TOKEN ""
+#endif
+#ifndef TRV_DEVICE_ID
+#define TRV_DEVICE_ID ""
+#endif
+#ifndef ICAL_URL
+#define ICAL_URL ""
+#endif
 const char* TZ_INFO   = "CET-1CEST,M3.5.0,M10.5.0/3";   // Europe/Amsterdam
 const char* ROOM_NAME = "TRV - Living Room";
-const char* ICAL_URL  = "";    // class timetable: paste your .ics / webcal:// subscription link (Google, Outlook, university portal...)
 const char* WX_CITY   = "Delft";                           // calendar screen weather (Open-Meteo, no API key)
 const char* WX_LAT    = "52.01";
 const char* WX_LON    = "4.36";
@@ -71,22 +90,163 @@ GxEPD2_BW<GxEPD2_579_GDEY0579T93, GxEPD2_579_GDEY0579T93::HEIGHT>
 struct Slot { float from, to, temp; };
 Slot SCH[] = {{0,6,17},{6,8,21},{8,17,18},{17,22,22.5},{22,24,17}};
 const float DEF_SCH[5] = {17, 21, 18, 22.5, 17};
-const char* MODE_NAME[4] = {"Auto", "Eco", "Comfort", "Frost (5C)"};
-float MODE_TEMP[4] = {0, 18, 22, 5};
-const float DEF_MODE[4] = {0, 18, 22, 5};
+const char* MODE_NAME[5] = {"Auto", "Eco", "Sleep", "Comfort", "Frost (5C)"};
+float MODE_TEMP[5] = {0, 19.5f, 17.5f, 21, 5};
+const float DEF_MODE[5] = {0, 19.5f, 17.5f, 21, 5};
 float tOff = 0;                  // sensor calibration offset (C), set in Settings
 
-float cur = 21.8, hum = 49;
+float cur = NAN, hum = NAN;
 float ovr = 0; bool hasOvr = false; int ovrSlot = -1;
 int  mode = 0;
-bool winOpen = false;
-int  battPct = -1; // unknown until a real battery measurement is connected
+int  contactState = -1;
+int  battPct = -1; // configured TRV's eWeLink-reported battery, or unknown
 float wxTemp = NAN, wxHi = NAN, wxLo = NAN, wxWind = NAN, wxHum = NAN; int wxCode = -1;
+float remoteTarget = NAN, remoteValve = NAN;
+char remoteMode[16] = "";
+bool dashboardOnline = false, cloudStateValid = false, targetPending = false;
+bool scheduleAppliedAfterConnect = false;
+float pendingTarget = NAN;
+String cloudError;
+uint32_t nextCloudPoll = 0, nextControlAt = 0, pendingTargetAt = 0;
+bool controlPending = false, pendingModeValid = false;
+char pendingMode[8] = "";
 bool dirty = true, headerDirty = false, calendarClockDirty = false, forceFull = true;
 int  partialCount = 0, lastMin = -1;
 int  lastSetSelDrawn = -1;
-uint32_t lastDraw = 0, lastSim = 0;
+uint32_t lastDraw = 0;
 float curC() { return cur + tOff; }   // room temperature incl. calibration offset
+
+struct RemoteDevice {
+  char id[72], name[48], kind[20], state[16];
+  float temperature, target, battery, valve;
+  int humidity, contact, tamper, online;
+};
+RemoteDevice remoteDevices[8];
+int remoteDeviceCount = 0;
+int deviceOffset = 0;
+
+bool workerConfigured() {
+  return strlen(DASHBOARD_WORKER_URL) > 8 && strlen(EINK_DEVICE_TOKEN) >= 32;
+}
+bool workerRequest(const char* path, const char* method, const String& body, String& responseBody) {
+  if (!workerConfigured() || WiFi.status() != WL_CONNECTED) {
+    cloudError = workerConfigured() ? "Wi-Fi offline" : "Configure Worker token";
+    return false;
+  }
+  WiFiClientSecure client;
+  client.useBuiltinCACertBundle();
+  HTTPClient http; http.setTimeout(18000);
+  String url = String(DASHBOARD_WORKER_URL) + path;
+  if (!http.begin(client, url)) { cloudError = "Worker URL invalid"; return false; }
+  http.addHeader("Authorization", String("Bearer ") + EINK_DEVICE_TOKEN);
+  if (strcmp(method, "POST") == 0) http.addHeader("Content-Type", "application/json");
+  int code = strcmp(method, "POST") == 0 ? http.POST(body) : http.GET();
+  responseBody = http.getString(); http.end();
+  if (code < 200 || code >= 300) {
+    DynamicJsonDocument errDoc(512);
+    cloudError = code < 0 ? "Worker connection failed" : String("Worker HTTP ") + code;
+    if (!deserializeJson(errDoc, responseBody) && errDoc["error"].is<const char*>()) cloudError = errDoc["error"].as<String>();
+    return false;
+  }
+  cloudError = "";
+  return true;
+}
+float jsonFloatOrNan(JsonVariantConst value) { return value.isNull() ? NAN : value.as<float>(); }
+int jsonIntOrMissing(JsonVariantConst value) { return value.isNull() ? -1 : value.as<int>(); }
+void copyJsonText(char* out, size_t cap, JsonVariantConst value) {
+  const char* text = value.is<const char*>() ? value.as<const char*>() : "";
+  strlcpy(out, text, cap);
+}
+void fetchDashboardState() {
+  String response;
+  if (!workerRequest("/api/eink/state", "GET", "", response)) { dashboardOnline = false; cloudStateValid = false; scheduleAppliedAfterConnect = false; headerDirty = dirty = true; return; }
+  DynamicJsonDocument doc(8192);
+  DeserializationError error = deserializeJson(doc, response);
+  if (error || !doc["devices"].is<JsonArray>()) { cloudError = "Invalid Worker response"; dashboardOnline = false; cloudStateValid = false; scheduleAppliedAfterConnect = false; headerDirty = dirty = true; return; }
+
+  float oldCur = cur, oldTarget = remoteTarget, oldValve = remoteValve;
+  int oldBattery = battPct, oldContact = contactState;
+  remoteDeviceCount = 0;
+  remoteTarget = remoteValve = NAN; remoteMode[0] = 0; cur = hum = NAN; battPct = -1; contactState = -1; cloudStateValid = false;
+  bool foundTrv = false; float roomSensorTemp = NAN, roomSensorHum = NAN;
+  for (JsonObjectConst item : doc["devices"].as<JsonArrayConst>()) {
+    const char* kind = item["kind"] | "";
+    const char* id = item["id"] | "";
+    bool isTrv = strlen(TRV_DEVICE_ID) && strcmp(id, TRV_DEVICE_ID) == 0;
+    bool isContact = strcmp(kind, "contact") == 0;
+    bool isTemp = strcmp(kind, "temperature") == 0;
+    bool hasBattery = !item["battery"].isNull();
+    if (remoteDeviceCount < 8 && (isTrv || isContact || isTemp || hasBattery)) {
+      RemoteDevice& d = remoteDevices[remoteDeviceCount++];
+      memset(&d, 0, sizeof(d));
+      copyJsonText(d.id, sizeof(d.id), item["id"]);
+      copyJsonText(d.name, sizeof(d.name), item["name"]);
+      copyJsonText(d.kind, sizeof(d.kind), item["kind"]);
+      copyJsonText(d.state, sizeof(d.state), item["state"]);
+      d.temperature = jsonFloatOrNan(item["temperature"]);
+      d.target = jsonFloatOrNan(item["target_temperature"]);
+      d.humidity = jsonIntOrMissing(item["humidity"]);
+      d.battery = jsonFloatOrNan(item["battery"]);
+      d.valve = jsonFloatOrNan(item["valve_position"]);
+      d.contact = jsonIntOrMissing(item["contact"]);
+      d.tamper = jsonIntOrMissing(item["tamper"]);
+      d.online = jsonIntOrMissing(item["online"]);
+    }
+    if (isTrv && !foundTrv) {
+      foundTrv = true;
+      cur = jsonFloatOrNan(item["temperature"]);
+      remoteTarget = jsonFloatOrNan(item["target_temperature"]);
+      remoteValve = jsonFloatOrNan(item["valve_position"]);
+      battPct = jsonIntOrMissing(item["battery"]);
+      copyJsonText(remoteMode, sizeof(remoteMode), item["state"]);
+    } else if (isTemp) {
+      roomSensorTemp = jsonFloatOrNan(item["temperature"]);
+      roomSensorHum = jsonFloatOrNan(item["humidity"]);
+    }
+    if (isContact && !item["contact"].isNull()) contactState = item["contact"].as<bool>() ? 1 : 0;
+  }
+  if (!foundTrv) { cloudError = "Configured TRV not found"; dashboardOnline = false; scheduleAppliedAfterConnect = false; headerDirty = dirty = true; return; }
+  deviceOffset = constrain(deviceOffset, 0, max(0, remoteDeviceCount - 4));
+  if (!isnan(roomSensorTemp)) cur = roomSensorTemp;
+  hum = roomSensorHum;
+  dashboardOnline = true; cloudStateValid = !isnan(cur) && !isnan(remoteTarget); headerDirty = true;
+  if (targetPending && !isnan(remoteTarget) && fabsf(remoteTarget - pendingTarget) < 0.26f) targetPending = false;
+  else if (targetPending && (int32_t)(millis() - pendingTargetAt) >= 0) targetPending = false;
+  if (isnan(oldCur) != isnan(cur) || (!isnan(cur) && fabsf(oldCur - cur) >= 0.1f)
+      || isnan(oldTarget) != isnan(remoteTarget) || (!isnan(remoteTarget) && fabsf(oldTarget - remoteTarget) >= 0.05f)
+      || isnan(oldValve) != isnan(remoteValve) || (!isnan(remoteValve) && fabsf(oldValve - remoteValve) >= 1)
+      || oldBattery != battPct || oldContact != contactState) dirty = true;
+}
+
+void queueTemperature(float value) {
+  if (!workerConfigured()) { cloudError = "Configure Worker token"; headerDirty = true; return; }
+  pendingTarget = constrain(roundf(value * 2) / 2.0f, 5.0f, 30.0f);
+  targetPending = controlPending = true;
+  pendingModeValid = true;
+  strlcpy(pendingMode, "heat", sizeof(pendingMode));
+  pendingTargetAt = millis() + 15000;
+  nextControlAt = millis() + 700;
+  dirty = true;
+}
+void sendQueuedControl() {
+  if (!controlPending || (int32_t)(millis() - nextControlAt) < 0) return;
+  String body = "{";
+  bool comma = false;
+  if (targetPending) { body += "\"temperature\":" + String(pendingTarget, 1); comma = true; }
+  if (pendingModeValid) { if (comma) body += ","; body += "\"mode\":\"" + String(pendingMode) + "\""; }
+  body += "}";
+  String response;
+  if (workerRequest("/api/eink/control", "POST", body, response)) {
+    controlPending = false; pendingModeValid = false;
+    nextCloudPoll = millis() + 5000;
+    cloudError = "Command sent; waiting for eWeLink";
+  } else {
+    controlPending = false; targetPending = false; pendingModeValid = false;
+    headerDirty = true;
+  }
+  dirty = true;
+}
+float targetForDisplay() { return targetPending ? pendingTarget : remoteTarget; }
 
 // ---------- logic ----------
 float hourNow() {
@@ -104,28 +264,14 @@ float eff() {
   return hasOvr ? ovr : SCH[slotNow()].temp;
 }
 int valvePct() {
-  if (winOpen) return 0;
-  return constrain((int)((eff() - curC()) * 80), 0, 100);
+  return isnan(remoteValve) ? -1 : constrain((int)lroundf(remoteValve), 0, 100);
 }
 void adjust(float d) {
-  ovr = constrain(round((eff() + d) * 2) / 2.0, 5.0, 30.0);
+  float current = targetForDisplay(); if (isnan(current)) current = eff();
+  ovr = constrain(round((current + d) * 2) / 2.0, 5.0, 30.0);
   hasOvr = true; ovrSlot = slotNow(); mode = 0; dirty = true;
+  queueTemperature(ovr);
 }
-void readSensors() {
-#if USE_SIM
-  if (millis() - lastSim < 2000) return;
-  lastSim = millis();
-  int v = valvePct();
-  cur += winOpen ? -0.08 : (v > 0 ? 0.08 * v / 100.0 : -0.02);
-  cur = max(10.0f, cur);
-#else
-  // TODO: cur = temperature from your sensor; hum = humidity; battPct = battery level
-#endif
-}
-void driveValve(int pct) {
-  // TODO: drive your valve motor to 'pct' % open
-}
-
 // ---------- drawing helpers ----------
 void txt(int x, int y, const GFXfont* f, const char* s, int al = 0, uint16_t c = BLK, uint8_t sz = 1) {
   display.setFont(f); display.setTextSize(sz); display.setTextColor(c);
@@ -136,6 +282,7 @@ void txt(int x, int y, const GFXfont* f, const char* s, int al = 0, uint16_t c =
 }
 // number + degree ring + "C"  (GFX fonts have no degree sign)
 void tempStr(int x, int y, float v, int dec, const GFXfont* nf, uint8_t ns, const GFXfont* uf, int r, int al, uint16_t col = BLK) {
+  if (isnan(v)) { txt(x, y, nf, "--", al, col, ns); return; }
   char b[12]; dtostrf(v, 0, dec, b);
   int16_t x1, y1; uint16_t w, h, cw, ch;
   display.setFont(nf); display.setTextSize(ns); display.getTextBounds(b, 0, 0, &x1, &y1, &w, &h);
@@ -157,6 +304,7 @@ void thickRR(int x, int y, int w, int h, int r) { display.drawRoundRect(x, y, w,
 void iconFlame(int cx, int cy, uint16_t c, uint16_t i) { display.fillCircle(cx, cy + 3, 7, c); display.fillTriangle(cx - 6, cy + 1, cx + 6, cy + 1, cx, cy - 11, c); display.fillCircle(cx, cy + 4, 3, i); }
 void iconLeaf(int cx, int cy, uint16_t c, uint16_t i) { display.fillRoundRect(cx - 9, cy - 7, 18, 14, 7, c); display.drawLine(cx - 8, cy + 8, cx + 4, cy - 4, i); display.drawLine(cx - 8, cy + 7, cx + 3, cy - 4, i); }
 void iconSofa(int cx, int cy, uint16_t c) { display.fillRoundRect(cx - 12, cy - 2, 24, 9, 2, c); display.fillRoundRect(cx - 8, cy - 8, 16, 7, 2, c); display.fillRect(cx - 9, cy + 7, 3, 3, c); display.fillRect(cx + 6, cy + 7, 3, 3, c); }
+void iconMoon(int cx, int cy, uint16_t c, uint16_t bg) { display.fillCircle(cx, cy, 9, c); display.fillCircle(cx + 5, cy - 4, 8, bg); display.fillCircle(cx - 5, cy + 7, 1, c); display.fillCircle(cx + 2, cy + 10, 1, c); }
 void iconSnow(int cx, int cy, uint16_t c) {
   for (int a = 0; a < 180; a += 60) { float t = a * DEG_TO_RAD; int dx = 10 * cos(t), dy = 10 * sin(t);
     display.drawLine(cx - dx, cy - dy, cx + dx, cy + dy, c); display.drawLine(cx - dx + 1, cy - dy, cx + dx + 1, cy + dy, c); }
@@ -173,6 +321,7 @@ void drawHeader(const char* title, int icon) {
   else if (icon == 4) { display.drawLine(27, 7, 27, 26, BLK); display.drawLine(27, 26, 46, 26, BLK); display.drawLine(27, 22, 33, 15, BLK);
                         display.drawLine(33, 15, 38, 19, BLK); display.drawLine(38, 19, 46, 9, BLK); display.drawLine(27, 23, 33, 16, BLK); display.drawLine(33, 16, 38, 20, BLK); display.drawLine(38, 20, 46, 10, BLK); }
   else if (icon == 3) { iconGear(36, 17); }
+  else if (icon == 5) { display.drawRoundRect(27, 7, 18, 20, 3, BLK); display.drawFastHLine(31, 12, 10, BLK); display.fillCircle(32, 19, 2, BLK); display.drawFastHLine(37, 19, 5, BLK); }
   else if (icon == 2) { display.drawCircle(36, 16, 10, BLK); display.drawCircle(36, 16, 9, BLK); display.drawLine(36, 16, 36, 9, BLK); display.drawLine(37, 16, 37, 9, BLK); display.drawLine(36, 16, 41, 19, BLK); }
   else { display.drawRoundRect(27, 9, 18, 17, 2, BLK); display.drawFastHLine(27, 14, 18, BLK); display.drawFastHLine(27, 15, 18, BLK);
          display.fillRect(32, 6, 2, 6, BLK); display.fillRect(39, 6, 2, 6, BLK); display.fillRect(31, 18, 3, 3, BLK); display.fillRect(37, 18, 3, 3, BLK); }
@@ -184,7 +333,7 @@ void drawHeader(const char* title, int icon) {
   else txt(586, 23, &FreeSansBold9pt7b, "--", 2);
   arc(595, 24, 12, 228, 312); arc(595, 24, 7, 228, 312); display.fillCircle(595, 23, 2, BLK);
   display.fillCircle(634, 22, 3, BLK); display.fillCircle(640, 19, 5, BLK); display.fillCircle(646, 22, 3, BLK); display.fillRect(634, 22, 13, 4, BLK);
-  txt(653, 23, &FreeSans9pt7b, WiFi.status() == WL_CONNECTED ? "Connected" : "Offline");
+  txt(653, 23, &FreeSans9pt7b, dashboardOnline ? "eWeLink" : (WiFi.status() == WL_CONNECTED ? "Link error" : "Offline"));
   display.drawRoundRect(742, 10, 26, 14, 3, BLK); display.fillRect(769, 14, 3, 6, BLK);
   if (battPct >= 0) {
     int pct = constrain(battPct, 0, 100);
@@ -198,7 +347,7 @@ void drawHeader(const char* title, int icon) {
 // ---------- screen ----------
 void drawUI() {
   struct tm t; bool haveTime = getLocalTime(&t, 0);
-  float e = eff(); int v = valvePct(); bool heat = v > 0 && !winOpen;
+  float e = targetForDisplay(); int v = valvePct(); bool heat = v > 0;
   char b[40];
 
   display.fillScreen(WHT);
@@ -212,12 +361,14 @@ void drawUI() {
   for (int i = 0; i < 5; i++) display.fillRect(57, 70 + i * 8, 5, 2, BLK);
   tempStr(78, 103, curC(), 1, &FreeSansBold24pt7b, 1, &FreeSansBold12pt7b, 4, 0);
   display.fillTriangle(92, 118, 84, 131, 100, 131, BLK); display.fillCircle(92, 131, 8, BLK);
-  snprintf(b, sizeof b, "%d %% RH", (int)hum); txt(110, 137, &FreeSansBold9pt7b, b);
+  if (isnan(hum)) strcpy(b, "-- % RH"); else snprintf(b, sizeof b, "%d %% RH", (int)hum);
+  txt(110, 137, &FreeSansBold9pt7b, b);
   display.drawFastHLine(27, 155, 191, BLK);
   for (int i = 0; i < 4; i++) display.fillRect(33 + i * 9, 191 - (7 + i * 5), 6, 7 + i * 5, BLK);
   txt(88, 187, &FreeSansBold9pt7b, "Heating:");
-  if (heat) { display.fillRoundRect(164, 169, 44, 24, 6, BLK); txt(186, 187, &FreeSansBold9pt7b, "ON", 1, WHT); }
-  else      { thickRR(164, 169, 44, 24, 6); txt(186, 187, &FreeSansBold9pt7b, "OFF", 1); }
+  if (v < 0) { thickRR(164, 169, 44, 24, 6); txt(186, 187, &FreeSansBold9pt7b, "--", 1); }
+  else if (heat) { display.fillRoundRect(164, 169, 44, 24, 6, BLK); txt(186, 187, &FreeSansBold9pt7b, "ON", 1, WHT); }
+  else { thickRR(164, 169, 44, 24, 6); txt(186, 187, &FreeSansBold9pt7b, "OFF", 1); }
   vline2(236, 47, 200);
 
   // middle: target
@@ -225,7 +376,7 @@ void drawUI() {
   thickRR(257, 86, 44, 44, 9); display.fillRect(269, 107, 20, 3, BLK);
   thickRR(496, 86, 44, 44, 9); display.fillRect(508, 107, 20, 3, BLK); display.fillRect(517, 98, 3, 20, BLK);
   tempStr(382, 126, e, 1, &FreeSansBold18pt7b, 2, &FreeSansBold12pt7b, 4, 1);
-  float f = (constrain(e, 16.0f, 28.0f) - 16) / 12.0; int kx = 269 + (int)(262 * f);
+  float f = isnan(e) ? 0.5f : (constrain(e, 16.0f, 28.0f) - 16) / 12.0; int kx = 269 + (int)(262 * f);
   display.drawRoundRect(269, 155, 262, 7, 3, BLK); display.fillRoundRect(269, 155, max(8, kx - 269), 7, 3, BLK);
   display.fillCircle(kx, 158, 11, BLK); display.fillCircle(kx, 158, 7, WHT);
   display.drawFastVLine(270, 172, 6, BLK); display.drawFastVLine(531, 172, 6, BLK);
@@ -238,36 +389,46 @@ void drawUI() {
   thickRR(585, 80, 9, 16, 2); thickRR(618, 80, 9, 16, 2); thickRR(594, 77, 24, 22, 7);
   display.fillRect(605, 62, 3, 15, BLK); thickRR(599, 54, 14, 8, 2);
   txt(645, 60, &FreeSans9pt7b, "Valve Opening");
-  snprintf(b, sizeof b, "%d %%", v); txt(644, 93, &FreeSansBold18pt7b, b);
+  if (v < 0) strcpy(b, "--"); else snprintf(b, sizeof b, "%d %%", v);
+  txt(644, 93, &FreeSansBold18pt7b, b);
   display.drawRoundRect(632, 102, 135, 9, 4, BLK); if (v > 0) display.fillRoundRect(632, 102, max(8, 135 * v / 100), 9, 4, BLK);
   display.drawRoundRect(585, 131, 26, 23, 3, BLK); display.drawFastHLine(585, 138, 26, BLK); display.fillRect(591, 128, 2, 6, BLK); display.fillRect(605, 128, 2, 6, BLK);
   for (int r = 0; r < 2; r++) for (int c = 0; c < 3; c++) display.fillRect(589 + c * 6, 142 + r * 6, 3, 3, BLK);
-  snprintf(b, sizeof b, "Schedule: %s", mode == 0 ? "Home" : MODE_NAME[mode]); if (mode == 3) strcpy(b, "Schedule: Frost");
+  if (remoteMode[0]) snprintf(b, sizeof b, "TRV: %s", remoteMode);
+  else { snprintf(b, sizeof b, "Preset: %s", mode == 0 ? "Auto" : MODE_NAME[mode]); if (mode == 4) strcpy(b, "Preset: Frost"); }
   txt(625, 147, &FreeSans9pt7b, b);
   display.drawLine(762, 140, 767, 145, BLK); display.drawLine(767, 145, 762, 150, BLK); display.drawLine(763, 140, 768, 145, BLK); display.drawLine(768, 145, 763, 150, BLK);
   display.drawRect(585, 170, 26, 24, BLK); display.drawRect(586, 171, 24, 22, BLK); display.drawFastVLine(598, 170, 24, BLK); display.drawFastHLine(585, 182, 26, BLK);
-  txt(625, 188, &FreeSans9pt7b, winOpen ? "Window: Open" : "Window: Closed");
+  txt(625, 188, &FreeSans9pt7b, contactState < 0 ? "Window: --" : (contactState ? "Window: Open" : "Window: Closed"));
+  const char* controlStatus = !dashboardOnline ? "Dashboard offline" :
+    (!cloudError.length() ? "Live" : (cloudError.startsWith("Command sent") ? "Command pending" : "Control error"));
+  txt(625, 207, &FreeSans9pt7b, controlStatus);
   display.fillCircle(764, 182, 10, BLK);
-  if (winOpen) { display.fillRect(763, 175, 3, 8, WHT); display.fillRect(763, 185, 3, 3, WHT); }
+  if (contactState < 0) { display.fillRect(763, 175, 3, 8, WHT); display.fillRect(763, 185, 3, 3, WHT); }
+  else if (contactState) { display.fillRect(760, 175, 3, 8, WHT); display.fillRect(766, 175, 3, 8, WHT); }
   else { display.drawLine(759, 182, 763, 186, WHT); display.drawLine(763, 186, 770, 178, WHT); display.drawLine(759, 183, 763, 187, WHT); display.drawLine(763, 187, 770, 179, WHT); }
 
   // bottom mode bar
   display.drawFastHLine(16, 212, 760, BLK);
-  const int xs[5] = {17, 164, 304, 459, 621}, io[4] = {-23, -19, -38, -42}, to[4] = {-1, 3, -14, -18};
+  const int xs[6] = {17, 137, 259, 381, 503, 621};
   thickRR(17, 222, 604, 38, 8);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     int mid = (xs[i] + xs[i + 1]) / 2; bool on = (mode == i); uint16_t c = on ? WHT : BLK, bg = on ? BLK : WHT;
     if (on) display.fillRoundRect(xs[i], 222, xs[i + 1] - xs[i], 38, 8, BLK); else if (i > 0) display.drawFastVLine(xs[i], 224, 34, BLK);
-    int ix = mid + io[i], iy = 241;
-    if (i == 0) iconFlame(ix, iy, c, bg); else if (i == 1) iconLeaf(ix, iy, c, bg); else if (i == 2) iconSofa(ix, iy, c); else iconSnow(ix, iy, c);
-    char lb[16]; if (i == 3) snprintf(lb, sizeof lb, "Frost (%dC)", (int)MODE_TEMP[3]); else strcpy(lb, MODE_NAME[i]);
-    txt(mid + to[i], 247, &FreeSansBold9pt7b, lb, 0, c);
+    int ix = mid - 28, iy = 241;
+    if (i == 0) iconFlame(ix, iy, c, bg);
+    else if (i == 1) iconLeaf(ix, iy, c, bg);
+    else if (i == 2) iconMoon(ix, iy, c, bg);
+    else if (i == 3) iconSofa(ix, iy, c);
+    else iconSnow(ix, iy, c);
+    char lb[16]; if (i == 4) snprintf(lb, sizeof lb, "Frost (%.0fC)", MODE_TEMP[4]); else strcpy(lb, MODE_NAME[i]);
+    txt(mid - 10, 247, &FreeSansBold9pt7b, lb, 0, c);
   }
   vline2(638, 224, 258); iconGear(680, 241); txt(703, 247, &FreeSansBold9pt7b, "Settings");
 }
 
 // ---------- calendar dashboard ----------
-int screen = 0;                                   // 0 = TRV, 1 = calendar
+int screen = 0;                                   // 0 TRV, 1 calendar, 2 timetable, 3 settings, 4 history, 5 devices
 Preferences prefs;
 uint32_t bm[60]; int bmN = 0;                     // bookmarked dates as yyyymmdd (kept in flash)
 int curY = 0, curM = 0, curD = 0; bool curInit = false;
@@ -537,30 +698,35 @@ void drawTimetable() {
 }
 
 // ---------- settings screen (MENU cycles TRV -> Timetable -> Calendar -> Settings) ----------
-const uint8_t NEXT_SCREEN[5] = {2, 3, 1, 4, 0};  // screen ids: 0 TRV, 1 calendar, 2 timetable, 3 settings, 4 history
-#define SET_N 10
+const uint8_t NEXT_SCREEN[6] = {2, 3, 1, 4, 5, 0}; // TRV -> timetable -> calendar -> settings -> history -> devices
+#define SET_N 11
 const char* SET_LABEL[SET_N] = {"Night 00-06", "Morning 06-08", "Day 08-17", "Evening 17-22", "Late 22-24",
-                                "Eco", "Comfort", "Frost", "Sensor offset", "Reset defaults"};
+                                "Eco", "Sleep", "Comfort", "Frost", "Sensor offset", "Reset defaults"};
 int setSel = 0; bool setEdit = false, resetArm = false;
 
 void loadSettings() {
   char k[4];
   for (int i = 0; i < 5; i++) { snprintf(k, sizeof k, "s%d", i); SCH[i].temp = prefs.getFloat(k, DEF_SCH[i]); }
-  for (int i = 1; i < 4; i++) { snprintf(k, sizeof k, "m%d", i); MODE_TEMP[i] = prefs.getFloat(k, DEF_MODE[i]); }
+  MODE_TEMP[1] = prefs.getFloat("m1", DEF_MODE[1]); // retain existing Eco setting
+  MODE_TEMP[2] = prefs.getFloat("m4", DEF_MODE[2]); // new Sleep preset
+  MODE_TEMP[3] = prefs.getFloat("m2", DEF_MODE[3]); // retain existing Comfort setting
+  MODE_TEMP[4] = prefs.getFloat("m3", DEF_MODE[4]); // retain existing Frost setting
   tOff = prefs.getFloat("off", 0);
 }
 void saveSettings() {
   char k[4];
   for (int i = 0; i < 5; i++) { snprintf(k, sizeof k, "s%d", i); prefs.putFloat(k, SCH[i].temp); }
-  for (int i = 1; i < 4; i++) { snprintf(k, sizeof k, "m%d", i); prefs.putFloat(k, MODE_TEMP[i]); }
+  prefs.putFloat("m1", MODE_TEMP[1]); prefs.putFloat("m4", MODE_TEMP[2]);
+  prefs.putFloat("m2", MODE_TEMP[3]); prefs.putFloat("m3", MODE_TEMP[4]);
   prefs.putFloat("off", tOff);
 }
-float* setPtr(int i) { if (i < 5) return &SCH[i].temp; if (i < 8) return &MODE_TEMP[i - 4]; return &tOff; }
+float* setPtr(int i) { if (i < 5) return &SCH[i].temp; if (i < 9) return &MODE_TEMP[i - 4]; return &tOff; }
 void setRange(int i, float& lo, float& hi, float& st) {
   if (i < 5)       { lo = 5;   hi = 30; st = 0.5f; }   // schedule slots
   else if (i == 5) { lo = 12;  hi = 21; st = 0.5f; }   // eco
-  else if (i == 6) { lo = 18;  hi = 26; st = 0.5f; }   // comfort
-  else if (i == 7) { lo = 3;   hi = 10; st = 1.0f; }   // frost
+  else if (i == 6) { lo = 12;  hi = 20; st = 0.5f; }   // sleep
+  else if (i == 7) { lo = 18;  hi = 26; st = 0.5f; }   // comfort
+  else if (i == 8) { lo = 3;   hi = 10; st = 1.0f; }   // frost
   else             { lo = -3;  hi = 3;  st = 0.1f; }   // sensor offset
 }
 void settingsRotary(int up, int n) {                    // up = +1 (rotary UP) or -1 (rotary DOWN)
@@ -574,25 +740,37 @@ void settingsOK() {
   if (setSel == SET_N - 1) {                            // reset row: press OK twice
     if (!resetArm) { resetArm = true; return; }
     for (int i = 0; i < 5; i++) SCH[i].temp = DEF_SCH[i];
-    for (int i = 1; i < 4; i++) MODE_TEMP[i] = DEF_MODE[i];
-    tOff = 0; hasOvr = false; resetArm = false; setEdit = false; saveSettings(); return;
+    for (int i = 1; i < 5; i++) MODE_TEMP[i] = DEF_MODE[i];
+    tOff = 0; hasOvr = false; resetArm = false; setEdit = false; saveSettings();
+    if (mode == 0 || setSel == mode + 4) queueTemperature(eff());
+    return;
   }
-  if (setEdit) saveSettings();                          // leaving edit mode = commit
+  bool committing = setEdit;
+  if (committing) saveSettings();                       // leaving edit mode = commit
   setEdit = !setEdit;
+  if (committing && (setSel == slotNow() || setSel == mode + 4)) queueTemperature(eff());
 }
 void exitSettings() {
   if (setEdit || resetArm) { setEdit = false; resetArm = false; loadSettings(); }   // cancel
   else { screen = 0; forceFull = true; }                                            // back to TRV
   dirty = true;
 }
-void settingRow(int i, int x, int ry, int w) {
+void settingRow(int i, int x, int ry, int w, int h = 32) {
   bool sel = (setSel == i), ed = sel && setEdit; uint16_t fg = sel ? WHT : BLK;
-  if (sel) display.fillRoundRect(x, ry, w, 32, 8, BLK); else display.drawRoundRect(x, ry, w, 32, 8, BLK);
-  if (ed) display.drawRoundRect(x + 3, ry + 3, w - 6, 26, 6, WHT);
-  txt(x + 16, ry + 22, &FreeSansBold9pt7b, SET_LABEL[i], 0, fg);
-  if (i == SET_N - 1) { txt(x + w - 16, ry + 22, &FreeSans9pt7b, resetArm ? "OK again" : "OK", 2, fg); return; }
+  int baseline = h == 32 ? 22 : 20;
+  if (sel) display.fillRoundRect(x, ry, w, h, 8, BLK); else display.drawRoundRect(x, ry, w, h, 8, BLK);
+  if (ed) display.drawRoundRect(x + 3, ry + 3, w - 6, h - 6, 6, WHT);
+  txt(x + 16, ry + baseline, &FreeSansBold9pt7b, SET_LABEL[i], 0, fg);
+  if (i == SET_N - 1) { txt(x + w - 16, ry + baseline, &FreeSans9pt7b, resetArm ? "OK again" : "OK", 2, fg); return; }
   float v = *setPtr(i); if (fabsf(v) < 0.05f) v = 0;
-  tempStr(x + w - 16, ry + 22, v, i == 7 ? 0 : 1, &FreeSansBold9pt7b, 1, &FreeSansBold9pt7b, 2, 2, fg);
+  if (i >= 5 && i <= 7) {
+    float lo, hi, step; setRange(i, lo, hi, step);
+    int sx = x + 153, sw = w - 250, sy = ry + h / 2;
+    display.drawFastHLine(sx, sy, sw, fg);
+    int knob = sx + (int)lroundf((constrain(v, lo, hi) - lo) / (hi - lo) * (sw - 1));
+    display.fillCircle(knob, sy, 4, ed ? WHT : fg);
+  }
+  tempStr(x + w - 16, ry + baseline, v, i == 8 ? 0 : 1, &FreeSansBold9pt7b, 1, &FreeSansBold9pt7b, 2, 2, fg);
 }
 void drawSettings() {
   display.fillScreen(WHT); display.drawRect(0, 0, 792, 272, BLK); display.drawRect(1, 1, 790, 270, BLK);
@@ -600,7 +778,8 @@ void drawSettings() {
   txt(16, 56, &FreeSansBold12pt7b, "Schedule temperatures");
   txt(412, 56, &FreeSansBold12pt7b, "Modes and sensor");
   vline2(395, 44, 244);
-  for (int r = 0; r < 5; r++) { settingRow(r, 14, 64 + r * 36, 368); settingRow(5 + r, 410, 64 + r * 36, 368); }
+  for (int r = 0; r < 5; r++) settingRow(r, 14, 64 + r * 36, 368);
+  for (int r = 0; r < 6; r++) settingRow(5 + r, 410, 62 + r * 30, 368, 28);
   display.drawFastHLine(16, 246, 760, BLK);
   const char* h = resetArm ? "OK again: reset all settings     Exit: cancel"
                 : setEdit  ? "Up / Down: change value     OK: save     Exit: cancel"
@@ -639,9 +818,9 @@ void historyTick() {
   uint32_t slot = (uint32_t)(time(nullptr) / 1800), date = (t.tm_year + 1900) * 10000UL + (t.tm_mon + 1) * 100 + t.tm_mday;
   if (accDate && date != accDate) pushDay(accDate);
   accDate = date;
-  if (slot == hLastSlot) return;
+  if (slot == hLastSlot || !cloudStateValid || isnan(curC()) || isnan(remoteTarget) || isnan(remoteValve)) return;
   hLastSlot = slot;
-  HSamp& s = hs[slot % H_N]; float rc = curC(), tg = eff(); int vp = valvePct();
+  HSamp& s = hs[slot % H_N]; float rc = curC(), tg = remoteTarget; int vp = valvePct();
   s.slot = slot; s.room10 = (int16_t)lroundf(rc * 10); s.tgt10 = (int16_t)lroundf(tg * 10); s.heat = (uint8_t)vp;
   accRoom += rc; accHeat += vp; accTgt = max(accTgt, tg); accN++;
   if (screen == 4) dirty = true;
@@ -774,14 +953,50 @@ void drawHistory() {
   txt(776, 255, &FreeSans9pt7b, "Up/Down: range   OK: series", 2);
 }
 
-void drawScreen() { if (screen == 0) drawUI(); else if (screen == 1) drawCalendar(); else if (screen == 2) drawTimetable(); else if (screen == 3) drawSettings(); else drawHistory(); }
+void drawDevices() {
+  display.fillScreen(WHT); display.drawRect(0, 0, 792, 272, BLK); display.drawRect(1, 1, 790, 270, BLK);
+  drawHeader("Devices", 5);
+  if (!dashboardOnline) {
+    txt(396, 116, &FreeSansBold12pt7b, "Dashboard not connected", 1);
+    txt(396, 146, &FreeSans9pt7b, cloudError.length() ? cloudError.c_str() : "Check Wi-Fi, Worker URL and device token", 1);
+    return;
+  }
+  txt(18, 54, &FreeSansBold12pt7b, "Live eWeLink devices");
+  if (!remoteDeviceCount) { txt(396, 140, &FreeSans9pt7b, "No TRV or paired sensors were returned", 1); return; }
+  int rows = min(remoteDeviceCount - deviceOffset, 4);
+  for (int i = 0; i < rows; i++) {
+    RemoteDevice& d = remoteDevices[deviceOffset + i]; int y = 64 + i * 44;
+    display.drawRoundRect(14, y, 764, 38, 7, BLK);
+    txt(26, y + 16, &FreeSansBold9pt7b, d.name[0] ? d.name : d.kind);
+    char detail[128] = "";
+    if (strcmp(d.kind, "valve") == 0) {
+      if (!isnan(d.temperature) && !isnan(d.target)) snprintf(detail, sizeof detail, "Room %.1f C | Target %.1f C", d.temperature, d.target);
+      else strcpy(detail, "Temperature / target unavailable");
+      if (!isnan(d.valve)) { size_t n = strlen(detail); snprintf(detail + n, sizeof(detail) - n, " | Valve %.0f%%", d.valve); }
+    } else if (strcmp(d.kind, "temperature") == 0) {
+      if (!isnan(d.temperature)) snprintf(detail, sizeof detail, "%.1f C", d.temperature); else strcpy(detail, "Temperature unavailable");
+      if (d.humidity >= 0) { size_t n = strlen(detail); snprintf(detail + n, sizeof(detail) - n, " | %d%% RH", d.humidity); }
+    } else if (strcmp(d.kind, "contact") == 0) {
+      snprintf(detail, sizeof detail, "Window / door: %s | Tamper: %s", d.contact < 0 ? "--" : (d.contact ? "Open" : "Closed"), d.tamper < 0 ? "--" : (d.tamper ? "Alert" : "Clear"));
+    } else snprintf(detail, sizeof detail, "Status: %s", d.online < 0 ? "--" : (d.online ? "Online" : "Offline"));
+    txt(26, y + 32, &FreeSans9pt7b, detail);
+    char battery[20]; if (isnan(d.battery)) strcpy(battery, "Battery --"); else snprintf(battery, sizeof battery, "Battery %.0f%%", d.battery);
+    txt(766, y + 24, &FreeSansBold9pt7b, battery, 2);
+  }
+  char page[24]; snprintf(page, sizeof page, "%d-%d of %d", deviceOffset + 1, deviceOffset + rows, remoteDeviceCount);
+  txt(766, 252, &FreeSans9pt7b, "Up/Down: scroll  OK: refresh", 2);
+  txt(28, 252, &FreeSans9pt7b, page);
+}
+
+void drawScreen() { if (screen == 0) drawUI(); else if (screen == 1) drawCalendar(); else if (screen == 2) drawTimetable(); else if (screen == 3) drawSettings(); else if (screen == 4) drawHistory(); else drawDevices(); }
 
 void drawCurrentHeader() {
   if (screen == 0) drawHeader(ROOM_NAME, 0);
   else if (screen == 1) drawHeader("Calendar", 1);
   else if (screen == 2) drawHeader("Timetable", 2);
   else if (screen == 3) drawHeader("Settings", 3);
-  else drawHeader("History", 4);
+  else if (screen == 4) drawHeader("History", 4);
+  else drawHeader("Devices", 5);
 }
 
 void partialRefresh(int x, int y, int w, int h, bool headerOnly) {
@@ -810,18 +1025,20 @@ void partialRefreshBody() {
     for (int n = 0; n < 2; n++) {
       int row = rows[n];
       if (row < 0 || (n == 1 && row == rows[0])) continue;
-      int x = row < 5 ? 8 : 404, y = 60 + (row % 5) * 36;
-      partialRefresh(x, y, 380, 40, false);
+      int x = row < 5 ? 8 : 404;
+      int y = row < 5 ? 60 + row * 36 : 58 + (row - 5) * 30;
+      int h = row < 5 ? 40 : 34;
+      partialRefresh(x, y, 380, h, false);
     }
     partialRefresh(8, 244, 776, 22, false);    // instruction / reset prompt
     lastSetSelDrawn = setSel;
-  } else {
+  } else if (screen == 4) {
     partialRefresh(8, 34, 776, 34, false);      // title, subtitle and range buttons
     partialRefresh(56, 38, 508, 190, false);   // graph and range controls
     partialRefresh(576, 68, 208, 154, false);  // summary cards
     partialRefresh(56, 230, 344, 34, false);   // series selectors
     partialRefresh(400, 238, 384, 26, false);  // button hints
-  }
+  } else partialRefresh(8, 34, 776, 230, false); // live device and battery list
 }
 
 void refresh() {
@@ -873,7 +1090,8 @@ void rotary(int up, int n) {          // up = +1 (rotary UP) or -1 (rotary DOWN)
   else if (screen == 1) moveCursor(-up * n);                            // calendar: UP = previous day, DOWN = next day
   else if (screen == 3) settingsRotary(up, n);
   else if (screen == 4) historyRotary(up, n);                          // history: range                         // settings: select / change
-  else { ttDay = constrain(ttDay - up * n, 0, 6); dirty = true; }       // timetable: previous / next day
+  else if (screen == 2) { ttDay = constrain(ttDay - up * n, 0, 6); dirty = true; } // timetable: previous / next day
+  else if (screen == 5) { deviceOffset = constrain(deviceOffset - up * n, 0, max(0, remoteDeviceCount - 4)); dirty = true; }
 }
 void pollButtons() {
   uint32_t now = millis();
@@ -883,20 +1101,22 @@ void pollButtons() {
     if (n) switch (i) {
       case B_UP:   rotary(+1, n); break;
       case B_DOWN: rotary(-1, n); break;
-      case B_OK:   if (screen == 0) { mode = (mode + n) % 4; if (mode == 0) hasOvr = false; dirty = true; }
+      case B_OK:   if (screen == 0) { mode = (mode + n) % 5; if (mode == 0) hasOvr = false; dirty = true; queueTemperature(eff()); }
                    else if (screen == 1) { if (n & 1) toggleBm(); }       // calendar: bookmark the day
                    else if (screen == 2) { nextIc = 0; }
                    else if (screen == 4) historyOK();
-                   else settingsOK();                                    // timetable: re-download the .ics now
+                   else if (screen == 3) settingsOK();
+                   else nextCloudPoll = 0;                                // Devices: refresh live status
                    break;
       case B_MENU: if (screen == 3) { setEdit = false; resetArm = false; loadSettings(); }   // leaving settings drops unsaved edits
                    for (uint8_t press = 0; press < n; press++) screen = NEXT_SCREEN[screen];
                    forceFull = true; dirty = true; break;                         // TRV -> timetable -> calendar -> settings
-      case B_EXIT: if (screen == 0) { if (n & 1) { winOpen = !winOpen; dirty = true; } }              // demo: window open
+      case B_EXIT: if (screen == 0) nextCloudPoll = 0;                                                 // refresh live TRV state
                    else if (screen == 1) setCursorToday();                                             // calendar: jump to today
                    else if (screen == 3) exitSettings();
                    else if (screen == 4) historyExit();
-                   else { ttDay = 0; dirty = true; }                                                   // timetable: back to today
+                   else if (screen == 2) { ttDay = 0; dirty = true; }                                  // timetable: back to today
+                   else { screen = 0; forceFull = true; dirty = true; }
                    break;
     }
     if (i == B_UP || i == B_DOWN) {                            // hold rotary up/down = auto-repeat
@@ -922,30 +1142,44 @@ void setup() {
 
 void loop() {
   pollButtons();
-  readSensors();
-  driveValve(valvePct());
+  if (WiFi.status() != WL_CONNECTED && dashboardOnline) {
+    dashboardOnline = false; cloudStateValid = false; scheduleAppliedAfterConnect = false; headerDirty = dirty = true;
+  }
+  if (workerConfigured() && WiFi.status() == WL_CONNECTED && (int32_t)(millis() - nextCloudPoll) >= 0) {
+    fetchDashboardState(); nextCloudPoll = millis() + 60000UL;
+  }
+  if (dashboardOnline && !scheduleAppliedAfterConnect) {
+    scheduleAppliedAfterConnect = true;
+    if (mode == 0) queueTemperature(eff());
+  }
+  sendQueuedControl();
   historyTick();
   static uint32_t nextWx = 0;
   if (WiFi.status() == WL_CONNECTED && millis() >= nextWx) {
     bool ok = fetchWeather(); nextWx = millis() + (ok ? 1800000UL : 300000UL);
     if (ok) { headerDirty = true; if (screen == 1) dirty = true; }
   }
-  if (strlen(ICAL_URL) && WiFi.status() == WL_CONNECTED && millis() >= nextIc) {
+  if (strlen(ICAL_URL) && WiFi.status() == WL_CONNECTED && (int32_t)(millis() - nextIc) >= 0) {
     struct tm tt; if (getLocalTime(&tt, 0)) { bool ok = fetchIcal(); nextIc = millis() + (ok ? 1800000UL : 300000UL); if (screen == 2) dirty = true; }
   }
   struct tm t;
   if (getLocalTime(&t, 0) && t.tm_min != lastMin) {
     static float lastScheduledTarget = NAN;
+    static int lastScheduleSlot = -1;
     lastMin = t.tm_min;
     headerDirty = true;
     if (screen == 1) calendarClockDirty = true;   // only its hands and digital clock change each minute
     if (screen == 2) dirty = true;                // live timetable status also changes
     float scheduledTarget = eff();
+    int currentScheduleSlot = slotNow();
     if (screen == 0 && (isnan(lastScheduledTarget) || fabsf(scheduledTarget - lastScheduledTarget) >= 0.05f)) dirty = true;
     lastScheduledTarget = scheduledTarget;
+    if (mode == 0 && lastScheduleSlot >= 0 && currentScheduleSlot != lastScheduleSlot) queueTemperature(scheduledTarget);
+    lastScheduleSlot = currentScheduleSlot;
   }
   static int lv = -1; static float lc = -99;
-  if (valvePct() != lv || fabs(cur - lc) >= 0.1) { lv = valvePct(); lc = cur; if (millis() - lastDraw > 30000) dirty = true; }
-  if ((dirty || headerDirty) && millis() - lastDraw > 300) refresh(); // presses made during refresh are queued by ISRs
+  bool tempChanged = isnan(cur) != isnan(lc) || (!isnan(cur) && fabs(cur - lc) >= 0.1f);
+  if (valvePct() != lv || tempChanged) { lv = valvePct(); lc = cur; if (millis() - lastDraw > 30000) dirty = true; }
+  if ((dirty || headerDirty || calendarClockDirty) && millis() - lastDraw > 300) refresh(); // partial e-paper updates
   delay(20);
 }
