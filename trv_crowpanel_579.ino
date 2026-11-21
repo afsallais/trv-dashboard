@@ -80,7 +80,8 @@ float cur = 21.8, hum = 49;
 float ovr = 0; bool hasOvr = false; int ovrSlot = -1;
 int  mode = 0;
 bool winOpen = false;
-int  battPct = 82;
+int  battPct = -1; // unknown until a real battery measurement is connected
+float wxTemp = NAN, wxHi = NAN, wxLo = NAN, wxWind = NAN, wxHum = NAN; int wxCode = -1;
 bool dirty = true, headerDirty = false, calendarClockDirty = false, forceFull = true;
 int  partialCount = 0, lastMin = -1;
 int  lastSetSelDrawn = -1;
@@ -178,10 +179,19 @@ void drawHeader(const char* title, int icon) {
   txt(64, 23, &FreeSansBold9pt7b, title);
   if (haveTime) strftime(b, sizeof b, "%a, %d %b   %H:%M", &t); else strcpy(b, "--:--");
   txt(396, 23, &FreeSansBold9pt7b, b, 1);
+  txt(510, 23, &FreeSansBold9pt7b, "Delft");
+  if (!isnan(wxTemp)) tempStr(586, 23, wxTemp, 0, &FreeSansBold9pt7b, 1, &FreeSansBold9pt7b, 2, 2);
+  else txt(586, 23, &FreeSansBold9pt7b, "--", 2);
   arc(595, 24, 12, 228, 312); arc(595, 24, 7, 228, 312); display.fillCircle(595, 23, 2, BLK);
   display.fillCircle(634, 22, 3, BLK); display.fillCircle(640, 19, 5, BLK); display.fillCircle(646, 22, 3, BLK); display.fillRect(634, 22, 13, 4, BLK);
   txt(653, 23, &FreeSans9pt7b, WiFi.status() == WL_CONNECTED ? "Connected" : "Offline");
-  display.drawRoundRect(742, 10, 26, 14, 3, BLK); display.fillRect(769, 14, 3, 6, BLK); display.fillRect(745, 13, (20 * battPct) / 100, 8, BLK);
+  display.drawRoundRect(742, 10, 26, 14, 3, BLK); display.fillRect(769, 14, 3, 6, BLK);
+  if (battPct >= 0) {
+    int pct = constrain(battPct, 0, 100);
+    display.fillRect(745, 13, (20 * pct) / 100, 8, BLK);
+    snprintf(b, sizeof b, "%d%%", pct);
+  } else strcpy(b, "--%");
+  txt(736, 22, &FreeSans9pt7b, b, 2);
   display.drawFastHLine(0, 32, 792, BLK); display.drawFastHLine(0, 33, 792, BLK);
 }
 
@@ -261,7 +271,6 @@ int screen = 0;                                   // 0 = TRV, 1 = calendar
 Preferences prefs;
 uint32_t bm[60]; int bmN = 0;                     // bookmarked dates as yyyymmdd (kept in flash)
 int curY = 0, curM = 0, curD = 0; bool curInit = false;
-float wxTemp = NAN, wxHi = NAN, wxLo = NAN, wxWind = NAN, wxHum = NAN; int wxCode = -1;
 const char* MONTHS[12] = {"January","February","March","April","May","June","July","August","September","October","November","December"};
 const char* MON3[12]   = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
 
@@ -917,7 +926,10 @@ void loop() {
   driveValve(valvePct());
   historyTick();
   static uint32_t nextWx = 0;
-  if (WiFi.status() == WL_CONNECTED && millis() >= nextWx) { bool ok = fetchWeather(); nextWx = millis() + (ok ? 1800000UL : 300000UL); if (ok && screen == 1) dirty = true; }
+  if (WiFi.status() == WL_CONNECTED && millis() >= nextWx) {
+    bool ok = fetchWeather(); nextWx = millis() + (ok ? 1800000UL : 300000UL);
+    if (ok) { headerDirty = true; if (screen == 1) dirty = true; }
+  }
   if (strlen(ICAL_URL) && WiFi.status() == WL_CONNECTED && millis() >= nextIc) {
     struct tm tt; if (getLocalTime(&tt, 0)) { bool ok = fetchIcal(); nextIc = millis() + (ok ? 1800000UL : 300000UL); if (screen == 2) dirty = true; }
   }
